@@ -11,15 +11,16 @@ export default function Fridge() {
 
   useEffect(() => { fetchItems() }, [])
 
-  async function fetchItems() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('ingredients')
-      .select('*')
-      .order('expiry_date', { ascending: true })
-    setItems(data || [])
-    setLoading(false)
-  }
+ async function fetchItems() {
+  setLoading(true)
+  const { data, error } = await supabase
+    .from('ingredients')
+    .select('*')
+    .order('expiry_date', { ascending: true })
+  console.log('查询结果：', data, '错误：', error)  // 加这行调试
+  setItems(data || [])
+  setLoading(false)
+}
 
   async function deleteItem(id) {
     await supabase.from('ingredients').delete().eq('id', id)

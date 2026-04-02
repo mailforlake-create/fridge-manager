@@ -151,36 +151,47 @@ export default function AddIngredient() {
   }
 
   // ── 保存选中的 AI 识别结果 ────────────────────────────────
-  async function saveAiItems() {
-    const toSave = aiItems
-      .filter((_, i) => selected[i])
-      .map(item => ({
-        name_zh: item.name_zh,
-        name_original: item.name_original || null,
-        category: item.category || null,
-        quantity: item.quantity || null,
-        unit: item.unit || '个',
-        expiry_date: item.expiry_date || null,
-        location: 'fridge'
-      }))
-    if (!toSave.length) return alert('请至少选择一项')
-    setSaving(true)
-    await supabase.from('ingredients').insert(toSave)
-    setSaving(false)
-    navigate('/fridge')
+ async function saveAiItems() {
+  const toSave = aiItems
+    .filter((_, i) => selected[i])
+    .map(item => ({
+      name_zh: item.name_zh,
+      name_original: item.name_original || null,
+      category: item.category || null,
+      quantity: item.quantity || null,
+      unit: item.unit || '个',
+      expiry_date: item.expiry_date || null,
+      location: 'fridge'
+    }))
+  if (!toSave.length) return alert('请至少选择一项')
+  setSaving(true)
+  const { error } = await supabase.from('ingredients').insert(toSave)
+  console.log('保存结果：', error)  // 加这行调试
+  setSaving(false)
+  if (error) {
+    alert('保存失败：' + error.message)
+    return
   }
+  navigate('/fridge')
+}
 
   // ── 手动保存 ────────────────────────────────────────────
-  async function saveManual() {
-    if (!form.name_zh.trim()) return alert('请输入食材名称')
-    setSaving(true)
-    await supabase.from('ingredients').insert({
-      ...form,
-      quantity: form.quantity ? Number(form.quantity) : null
-    })
-    setSaving(false)
-    navigate('/fridge')
+ async function saveManual() {
+  if (!form.name_zh.trim()) return alert('请输入食材名称')
+  setSaving(true)
+  const { error } = await supabase.from('ingredients').insert({
+    ...form,
+    quantity: form.quantity ? Number(form.quantity) : null,
+    expiry_date: form.expiry_date || null,  // ← 加这行
+  })
+  console.log('保存错误详情：', JSON.stringify(error))
+  setSaving(false)
+  if (error) {
+    alert('保存失败：' + error.message)
+    return
   }
+  navigate('/fridge')
+}
 
   // ── 条形码（Open Food Facts） ────────────────────────────
   async function lookupBarcode(code) {
