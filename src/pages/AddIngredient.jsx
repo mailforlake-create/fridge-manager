@@ -39,9 +39,18 @@ function parseIngredients(text) {
     const match = cleaned.match(/\[[\s\S]*\]/)
     if (match) {
       const result = JSON.parse(match[0])
-      console.log('解析结果：', result)  // ← 加这行
+      console.log('解析结果：', result)
       return result
     }
+    // JSON 被截断时，提取所有完整的对象
+    const objects = []
+    const regex = /\{[^{}]*"name_zh"[^{}]*\}/g
+    let m
+    while ((m = cleaned.match(regex)) !== null) {
+      try { objects.push(JSON.parse(m[0])) } catch {}
+      break
+    }
+    return objects
   } catch (e) {
     console.error('解析失败：', e)
   }
