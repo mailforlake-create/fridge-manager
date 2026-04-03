@@ -13,7 +13,6 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) throw new Error('GEMINI_API_KEY not set')
 
-    // 把前端传来的 Claude 格式消息转换成 Gemini 格式
     const contents = body.messages.map((msg: any) => {
       if (typeof msg.content === 'string') {
         return {
@@ -21,7 +20,6 @@ Deno.serve(async (req) => {
           parts: [{ text: msg.content }]
         }
       }
-      // 多模态：图片 + 文字
       const parts = msg.content.map((c: any) => {
         if (c.type === 'text') return { text: c.text }
         if (c.type === 'image') return {
@@ -42,20 +40,19 @@ Deno.serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents,
-          generationConfig: { 
-          maxOutputTokens: body.max_tokens || 4096,
-          responseMimeType: "application/json"  // ← 让 Gemini 直接输出 JSON，不带代码块
-        }
+          generationConfig: {
+            maxOutputTokens: 8192,
+            temperature: 0.1
+          }
         }),
       }
     )
 
     const data = await response.json()
-    console.log('Gemini raw:', JSON.stringify(data))
+    console.log('Gemini raw:', JSON.stringify(data).substring(0, 500))
 
     if (data.error) throw new Error(data.error.message)
 
-    // 转换成前端期望的 Claude 格式，让前端代码不用改
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
     return new Response(JSON.stringify({
       content: [{ type: 'text', text }]

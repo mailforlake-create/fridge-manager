@@ -5,8 +5,7 @@ export default function Layout() {
     position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
     width: '100%', maxWidth: 430, background: '#fff',
     borderTop: '1px solid #e2e8f0', display: 'flex',
-    justifyContent: 'space-around', padding: '8px 0 20px',
-    zIndex: 100
+    justifyContent: 'space-around', padding: '8px 0 20px', zIndex: 100
   }
   const linkStyle = ({ isActive }) => ({
     display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -26,6 +25,9 @@ export default function Layout() {
         </NavLink>
         <NavLink to="/shopping" style={linkStyle}>
           <span style={{ fontSize: 22 }}>🛒</span>购物清单
+        </NavLink>
+        <NavLink to="/history" style={linkStyle}>
+          <span style={{ fontSize: 22 }}>🧾</span>履历
         </NavLink>
       </nav>
     </div>

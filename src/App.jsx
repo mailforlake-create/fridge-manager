@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import Fridge from './pages/Fridge'
 import AddIngredient from './pages/AddIngredient'
 import ShoppingList from './pages/ShoppingList'
+import PurchaseHistory from './pages/PurchaseHistory'
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
           <Route path="fridge" element={<Fridge />} />
           <Route path="add" element={<AddIngredient />} />
           <Route path="shopping" element={<ShoppingList />} />
+          <Route path="history" element={<PurchaseHistory />} />
         </Route>
       </Routes>
     </BrowserRouter>

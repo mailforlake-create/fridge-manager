@@ -11,20 +11,23 @@ export default function Fridge() {
 
   useEffect(() => { fetchItems() }, [])
 
- async function fetchItems() {
-  setLoading(true)
-  const { data, error } = await supabase
-    .from('ingredients')
-    .select('*')
-    .order('expiry_date', { ascending: true })
-  console.log('查询结果：', data, '错误：', error)  // 加这行调试
-  setItems(data || [])
-  setLoading(false)
-}
+  async function fetchItems() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('ingredients')
+      .select('*')
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+    setItems(data || [])
+    setLoading(false)
+  }
 
   async function deleteItem(id) {
     await supabase.from('ingredients').delete().eq('id', id)
     setItems(items.filter(i => i.id !== id))
+  }
+
+  function updateItem(updated) {
+    setItems(items.map(i => i.id === updated.id ? updated : i))
   }
 
   const categories = ['all', ...new Set(items.map(i => i.category).filter(Boolean))]
@@ -33,7 +36,6 @@ export default function Fridge() {
   return (
     <div style={{ padding: '16px 16px 0' }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>🧊 我的冰箱</h1>
-
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 16 }}>
         {categories.map(c => (
           <button key={c} onClick={() => setFilter(c)} style={{
@@ -43,7 +45,6 @@ export default function Fridge() {
           }}>{c === 'all' ? '全部' : c}</button>
         ))}
       </div>
-
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
       ) : filtered.length === 0 ? (
@@ -51,7 +52,7 @@ export default function Fridge() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map(item => (
-            <IngredientCard key={item.id} item={item} onDelete={deleteItem} />
+            <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
           ))}
         </div>
       )}

@@ -12,17 +12,14 @@ async function callClaude(messages) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
-body: JSON.stringify({
-  max_tokens: 4096,  // ← 从 1024 改成 4096
-  messages
-})
+    body: JSON.stringify({ max_tokens: 4096, messages })
   })
   const data = await res.json()
-  console.log('Claude 返回：', JSON.stringify(data))  // ← 加这行
+  console.log('Claude 返回：', JSON.stringify(data))
   if (data.error) throw new Error(data.error)
   return data.content[0].text
 }
-// 图片文件 → base64
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -32,7 +29,6 @@ function fileToBase64(file) {
   })
 }
 
-// ─── 解析 Claude 返回的 JSON ──────────────────────────────
 function parseIngredients(text) {
   try {
     const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
@@ -42,167 +38,307 @@ function parseIngredients(text) {
       console.log('解析结果：', result)
       return result
     }
-    // JSON 被截断时，提取所有完整的对象
-    const objects = []
-    const regex = /\{[^{}]*"name_zh"[^{}]*\}/g
-    let m
-    while ((m = cleaned.match(regex)) !== null) {
-      try { objects.push(JSON.parse(m[0])) } catch {}
-      break
-    }
-    return objects
   } catch (e) {
     console.error('解析失败：', e)
   }
   return []
 }
 
-// ─── 单食材/多食材拍照识别 ────────────────────────────────
+function calcExpiry(mfgDate, shelfDays) {
+  if (!mfgDate || !shelfDays) return ''
+  const d = new Date(mfgDate)
+  d.setDate(d.getDate() + Number(shelfDays))
+  return d.toISOString().split('T')[0]
+}
+
 async function recognizePhoto(file) {
   const base64 = await fileToBase64(file)
-  const mediaType = file.type || 'image/jpeg'
-  const prompt = `你是一个冰箱食材识别助手。请识别图片中的所有食材。
-
-对每种食材输出 JSON 数组，每项包含：
-- name_zh: 中文名称
-- name_original: 原文名称（如果可识别日文/英文商品名，否则留空字符串）
-- category: 分类（蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他）
-- quantity: 数量（数字，无法判断填1）
-- unit: 单位（个/包/瓶/袋/克/毫升/升/根/片/块）
-- expiry_date: 过期日期（如果图片中可见，格式 YYYY-MM-DD，否则留空字符串）
-
-只输出 JSON 数组，不要其他文字。例：
-[{"name_zh":"牛奶","name_original":"牛乳","category":"乳制品","quantity":1,"unit":"瓶","expiry_date":"2025-04-10"}]`
-
+  const prompt = `你是冰箱食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
+name_zh(中文名), name_original(原文，可空), category(蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他),
+quantity(数字), unit(个/包/瓶/袋/克/毫升/升/根/片/块), expiry_date(YYYY-MM-DD或空字符串)
+只输出JSON数组。`
   const text = await callClaude([{
     role: 'user',
     content: [
-      { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+      { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } },
       { type: 'text', text: prompt }
     ]
   }])
   return parseIngredients(text)
 }
 
-// ─── 购物小票识别 ─────────────────────────────────────────
 async function recognizeReceipt(file) {
   const base64 = await fileToBase64(file)
   const mediaType = file.type || 'image/jpeg'
-  const prompt = `你是一个购物小票识别助手。请从这张购物小票（可能是日文或英文）中提取所有食材类商品。
 
-非食材类商品（如袋子、积分、折扣行）请忽略。
-
-对每种食材输出 JSON 数组，每项包含：
-- name_zh: 中文名称（将日文/英文翻译成中文）
-- name_original: 原文名称（小票上的原始文字）
-- category: 分类（蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他）
-- quantity: 数量（从小票读取，无法判断填1）
-- unit: 单位（个/包/瓶/袋/克/毫升/升/根/片/块）
-- expiry_date: 留空字符串
-
-只输出 JSON 数组，不要其他文字。`
-
-  const text = await callClaude([{
+  // 第一步：只识别商家信息 + 商品名称列表
+  const step1Text = await callClaude([{
     role: 'user',
     content: [
       { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-      { type: 'text', text: prompt }
+      { type: 'text', text: `从这张购物小票提取以下信息，输出JSON：
+{
+  "store_name": "商家中文名",
+  "store_name_original": "商家原文",
+  "purchased_at": "YYYY-MM-DD或空字符串",
+  "total_amount": 合计数字或null,
+  "items": [
+    {"name_original": "原文商品名", "price": 价格数字或null, "original_price": 原价或null, "is_discount": true/false, "discount_info": "折扣说明或空字符串", "quantity": 数量数字}
+  ]
+}
+只输出JSON。` }
     ]
   }])
-  return parseIngredients(text)
+
+  let step1
+  try {
+    const c1 = step1Text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    step1 = JSON.parse(c1)
+  } catch {
+    // 截断时容错
+    const storeMatch = step1Text.match(/"store_name"\s*:\s*"([^"]*)"/)
+    const storeOrigMatch = step1Text.match(/"store_name_original"\s*:\s*"([^"]*)"/)
+    const dateMatch = step1Text.match(/"purchased_at"\s*:\s*"([^"]*)"/)
+    const totalMatch = step1Text.match(/"total_amount"\s*:\s*(\d+)/)
+    const itemRegex = /\{\s*"name_original"\s*:[^}]+\}/g
+    const items = []
+    let m
+    while ((m = itemRegex.exec(step1Text)) !== null) {
+      try { items.push(JSON.parse(m[0])) } catch {}
+    }
+    step1 = {
+      store_name: storeMatch?.[1] || '未知商家',
+      store_name_original: storeOrigMatch?.[1] || '',
+      purchased_at: dateMatch?.[1] || '',
+      total_amount: totalMatch ? Number(totalMatch[1]) : null,
+      items
+    }
+  }
+
+  if (!step1?.items?.length) return null
+
+  // 第二步：把原文商品名批量翻译+分类
+  const names = step1.items.map(i => i.name_original).join('\n')
+  const step2Text = await callClaude([{
+    role: 'user',
+    content: `将以下日文/英文商品名翻译成中文并分类，输出JSON数组，每项包含：
+{"name_original": "原文", "name_zh": "中文名", "category": "蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/零食/其他/非食材", "unit": "个/包/瓶/袋/克/毫升/升/根/片/块"}
+商品列表：
+${names}
+只输出JSON数组。`
+  }])
+
+  let translations = []
+  try {
+    const c2 = step2Text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    const match = c2.match(/\[[\s\S]*\]/)
+    if (match) translations = JSON.parse(match[0])
+  } catch (e) {
+    console.error('翻译解析失败', e)
+  }
+
+  // 合并两步结果
+  const items = step1.items.map((item, i) => {
+    const trans = translations[i] || {}
+    return {
+      name_zh: trans.name_zh || item.name_original,
+      name_original: item.name_original,
+      category: trans.category || '其他',
+      quantity: item.quantity || 1,
+      unit: trans.unit || '个',
+      price: item.price || null,
+      original_price: item.original_price || null,
+      is_discount: item.is_discount || false,
+      discount_info: item.discount_info || '',
+      expiry_date: '',
+      mfg_date: '',
+      shelf_days: ''
+    }
+  })
+
+  return {
+    store_name: step1.store_name,
+    store_name_original: step1.store_name_original,
+    purchased_at: step1.purchased_at,
+    total_amount: step1.total_amount,
+    items
+  }
 }
 
-// ─── 主组件 ───────────────────────────────────────────────
 const TABS = [
-  { id: 'manual',  label: '手动', icon: '✏️' },
-  { id: 'photo',   label: '拍照', icon: '📷' },
+  { id: 'manual', label: '手动', icon: '✏️' },
+  { id: 'photo', label: '拍照', icon: '📷' },
   { id: 'receipt', label: '小票', icon: '🧾' },
   { id: 'barcode', label: '条形码', icon: '📦' },
 ]
 
 const EMPTY_FORM = {
   name_zh: '', name_original: '', category: '',
-  quantity: '', unit: '个', expiry_date: '', location: 'fridge'
+  quantity: '', unit: '个', expiry_date: '',
+  mfg_date: '', shelf_days: '', location: 'fridge', memo: ''
 }
+
+const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
+const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','其他']
 
 export default function AddIngredient() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('manual')
   const [form, setForm] = useState(EMPTY_FORM)
-  const [aiItems, setAiItems] = useState([])   // AI 识别出的候选列表
-  const [selected, setSelected] = useState({}) // 勾选状态
+  const [aiItems, setAiItems] = useState([])
+  const [selected, setSelected] = useState({})
+  const [receiptData, setReceiptData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const photoRef = useRef()
-  const receiptRef = useRef()
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const set = (k, v) => setForm(f => {
+    const next = { ...f, [k]: v }
+    if (k === 'mfg_date' || k === 'shelf_days') {
+      next.expiry_date = calcExpiry(
+        k === 'mfg_date' ? v : f.mfg_date,
+        k === 'shelf_days' ? v : f.shelf_days
+      )
+    }
+    return next
+  })
 
-  // ── 拍照/小票上传后识别 ──────────────────────────────────
+  function setItemField(i, k, v) {
+    setAiItems(items => {
+      const next = [...items]
+      next[i] = { ...next[i], [k]: v }
+      if (k === 'mfg_date' || k === 'shelf_days') {
+        next[i].expiry_date = calcExpiry(
+          k === 'mfg_date' ? v : next[i].mfg_date,
+          k === 'shelf_days' ? v : next[i].shelf_days
+        )
+      }
+      return next
+    })
+  }
+
   async function handleImage(file, type) {
     if (!file) return
     setLoading(true)
     setAiItems([])
     setSelected({})
+    setReceiptData(null)
     try {
-      const items = type === 'receipt'
-        ? await recognizeReceipt(file)
-        : await recognizePhoto(file)
-      setAiItems(items)
-      // 默认全选
-      const sel = {}
-      items.forEach((_, i) => { sel[i] = true })
-      setSelected(sel)
+      if (type === 'receipt') {
+        const data = await recognizeReceipt(file)
+        if (data && data.items) {
+          setReceiptData(data)
+          const items = data.items.map(i => ({ ...i, mfg_date: '', shelf_days: '' }))
+          setAiItems(items)
+          const sel = {}
+          items.forEach((item, i) => { sel[i] = item.category !== '非食材' })
+          setSelected(sel)
+        } else {
+          alert('小票识别失败，请重试')
+        }
+      } else {
+        const items = await recognizePhoto(file)
+        const itemsWithExtra = items.map(i => ({ ...i, mfg_date: '', shelf_days: '' }))
+        setAiItems(itemsWithExtra)
+        const sel = {}
+        itemsWithExtra.forEach((_, i) => { sel[i] = true })
+        setSelected(sel)
+      }
     } catch (e) {
       alert('识别失败，请重试：' + e.message)
     }
     setLoading(false)
   }
 
-  // ── 保存选中的 AI 识别结果 ────────────────────────────────
- async function saveAiItems() {
-  const toSave = aiItems
-    .filter((_, i) => selected[i])
-    .map(item => ({
-      name_zh: item.name_zh,
-      name_original: item.name_original || null,
-      category: item.category || null,
-      quantity: item.quantity || null,
-      unit: item.unit || '个',
-      expiry_date: item.expiry_date || null,
-      location: 'fridge'
-    }))
-  if (!toSave.length) return alert('请至少选择一项')
-  setSaving(true)
-  const { error } = await supabase.from('ingredients').insert(toSave)
-  console.log('保存结果：', error)  // 加这行调试
-  setSaving(false)
-  if (error) {
-    alert('保存失败：' + error.message)
-    return
+  async function mergeOrInsert(item) {
+    // 查找同名食材
+    const { data: existing } = await supabase
+      .from('ingredients')
+      .select('id, quantity')
+      .eq('name_zh', item.name_zh)
+      .maybeSingle()
+    if (existing) {
+      await supabase.from('ingredients')
+        .update({ quantity: (existing.quantity || 0) + (item.quantity || 1) })
+        .eq('id', existing.id)
+    } else {
+      await supabase.from('ingredients').insert(item)
+    }
   }
-  navigate('/fridge')
-}
 
-  // ── 手动保存 ────────────────────────────────────────────
- async function saveManual() {
-  if (!form.name_zh.trim()) return alert('请输入食材名称')
-  setSaving(true)
-  const { error } = await supabase.from('ingredients').insert({
-    ...form,
-    quantity: form.quantity ? Number(form.quantity) : null,
-    expiry_date: form.expiry_date || null,  // ← 加这行
-  })
-  console.log('保存错误详情：', JSON.stringify(error))
-  setSaving(false)
-  if (error) {
-    alert('保存失败：' + error.message)
-    return
+  async function saveAiItems() {
+    const toSave = aiItems.filter((_, i) => selected[i])
+    if (!toSave.length) return alert('请至少选择一项')
+    setSaving(true)
+
+    // 保存购物履历
+    if (receiptData) {
+      const { data: history } = await supabase
+        .from('purchase_history')
+        .insert({
+          store_name: receiptData.store_name || '未知商家',
+          purchased_at: receiptData.purchased_at || null,
+          total_amount: receiptData.total_amount || null
+        })
+        .select().single()
+
+      if (history) {
+        const historyItems = aiItems.map((item, i) => ({
+          history_id: history.id,
+          name_zh: item.name_zh,
+          name_original: item.name_original || null,
+          category: item.category || null,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '个',
+          price: item.price || null,
+          original_price: item.original_price || null,
+          is_discount: item.is_discount || false,
+          discount_info: item.discount_info || null,
+          add_to_fridge: selected[i] && item.category !== '非食材',
+          expiry_date: item.expiry_date || null
+        }))
+        await supabase.from('purchase_items').insert(historyItems)
+      }
+    }
+
+    // 存入冰箱（同名合并）
+    const fridgeItems = toSave
+      .filter(i => i.category !== '非食材')
+      .map(item => ({
+        name_zh: item.name_zh,
+        name_original: item.name_original || null,
+        category: item.category || null,
+        quantity: Number(item.quantity) || 1,
+        unit: item.unit || '个',
+        expiry_date: item.expiry_date || null,
+        location: 'fridge'
+      }))
+
+    for (const item of fridgeItems) {
+      await mergeOrInsert(item)
+    }
+
+    setSaving(false)
+    navigate('/fridge')
   }
-  navigate('/fridge')
-}
 
-  // ── 条形码（Open Food Facts） ────────────────────────────
+  async function saveManual() {
+    if (!form.name_zh.trim()) return alert('请输入食材名称')
+    setSaving(true)
+    const item = {
+      name_zh: form.name_zh,
+      name_original: form.name_original || null,
+      category: form.category || null,
+      quantity: form.quantity ? Number(form.quantity) : 1,
+      unit: form.unit,
+      expiry_date: form.expiry_date || null,
+      location: form.location,
+      memo: form.memo || null
+    }
+    await mergeOrInsert(item)
+    setSaving(false)
+    navigate('/fridge')
+  }
+
   async function lookupBarcode(code) {
     setLoading(true)
     try {
@@ -210,118 +346,156 @@ export default function AddIngredient() {
       const data = await res.json()
       if (data.status === 1) {
         const p = data.product
-        const nameEn = p.product_name_en || p.product_name || ''
-        const nameJa = p.product_name_ja || ''
-        const original = nameJa || nameEn
-        // 用 Claude 翻译成中文
+        const original = p.product_name_ja || p.product_name_en || p.product_name || ''
         const zh = await callClaude([{
           role: 'user',
-          content: `将以下食品名称翻译成中文，只输出中文名称，不要其他内容：${original || nameEn}`
+          content: `将以下食品名称翻译成中文，只输出中文名称：${original}`
         }])
-        setForm(f => ({
-          ...f,
-          name_zh: zh.trim(),
-          name_original: original,
-          category: '其他'
-        }))
+        setForm(f => ({ ...f, name_zh: zh.trim(), name_original: original, category: '其他' }))
         setTab('manual')
       } else {
-        alert('未找到该条形码对应的商品，请手动输入')
+        alert('未找到该条形码，请手动输入')
         setTab('manual')
       }
-    } catch {
-      alert('查询失败，请检查网络')
-    }
+    } catch { alert('查询失败') }
     setLoading(false)
   }
 
-  // ── 样式常量 ────────────────────────────────────────────
   const field = {
     width: '100%', padding: '11px 14px', borderRadius: 10, fontSize: 15,
-    border: '1.5px solid #e2e8f0', outline: 'none', marginTop: 6, background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+  }
+  const smallField = {
+    width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
   }
   const labelSt = { fontSize: 13, fontWeight: 600, color: '#475569' }
 
-  // ── 上传区域（拍照/小票共用） ─────────────────────────────
-  function UploadZone({ refEl, type }) {
+  // 生产日期+保质期输入组件（手动和AI列表共用）
+  function ExpirySection({ mfgDate, shelfDays, expiryDate, onMfg, onShelf, onExpiry, small }) {
+    const f = small ? smallField : field
     return (
-      <div>
-        <input ref={refEl} type="file" accept="image/*"
-          capture={type === 'photo' ? 'environment' : undefined}
-          style={{ display: 'none' }}
-          onChange={e => handleImage(e.target.files[0], type)} />
-        <button onClick={() => refEl.current.click()} style={{
-          width: '100%', padding: '40px 0', borderRadius: 14,
-          border: '2px dashed #cbd5e1', background: '#f8fafc',
-          color: '#64748b', fontSize: 15, display: 'flex',
-          flexDirection: 'column', alignItems: 'center', gap: 8
-        }}>
-          <span style={{ fontSize: 40 }}>{type === 'photo' ? '📷' : '🧾'}</span>
-          <span style={{ fontWeight: 600 }}>
-            {type === 'photo' ? '拍摄或选择食材照片' : '拍摄或选择购物小票'}
-          </span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            {type === 'photo' ? '支持单个或多个食材' : '支持日文、英文小票'}
-          </span>
-        </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: small ? 4 : 8 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: small ? 11 : 13, color: '#94a3b8', marginBottom: 2 }}>生产日期</div>
+            <input style={f} type="date" value={mfgDate} onChange={e => onMfg(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: small ? 11 : 13, color: '#94a3b8', marginBottom: 2 }}>保质期(天)</div>
+            <input style={f} type="number" placeholder="如：180" value={shelfDays}
+              onChange={e => onShelf(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: small ? 11 : 13, color: '#94a3b8', marginBottom: 2 }}>过期日期</div>
+          <input style={f} type="date" value={expiryDate} onChange={e => onExpiry(e.target.value)} />
+        </div>
       </div>
     )
   }
 
-  // ── AI 识别结果列表 ───────────────────────────────────────
+  // AI识别结果列表（拍照/小票共用）
   function AiResultList() {
     if (!aiItems.length) return null
     return (
-      <div style={{ marginTop: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#475569', marginBottom: 10 }}>
-          识别到 {aiItems.length} 种食材，请确认：
+      <div style={{ marginTop: 16 }}>
+        {receiptData && (
+          <div style={{
+            background: '#f0fdf4', borderRadius: 10, padding: '10px 14px',
+            marginBottom: 12, fontSize: 13
+          }}>
+            <div style={{ fontWeight: 600, color: '#16a34a' }}>
+              {receiptData.store_name || '未知商家'}
+            </div>
+            <div style={{ color: '#64748b', marginTop: 2 }}>
+              {receiptData.purchased_at && `购买日期：${receiptData.purchased_at}　`}
+              {receiptData.total_amount && `合计：¥${receiptData.total_amount}`}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8 }}>
+          识别到 {aiItems.length} 件商品，勾选存入冰箱：
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {aiItems.map((item, i) => (
-            <div key={i} onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))}
-              style={{
-                background: selected[i] ? '#f0fdf4' : '#f8fafc',
-                border: `1.5px solid ${selected[i] ? '#16a34a' : '#e2e8f0'}`,
-                borderRadius: 12, padding: '12px 14px',
-                display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer'
-              }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                border: `2px solid ${selected[i] ? '#16a34a' : '#cbd5e1'}`,
-                background: selected[i] ? '#16a34a' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                {selected[i] && <span style={{ color: '#fff', fontSize: 13, lineHeight: 1 }}>✓</span>}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{item.name_zh}</div>
-                {item.name_original && (
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{item.name_original}</div>
-                )}
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                  {item.quantity}{item.unit} · {item.category}
-                  {item.expiry_date && ` · 到期 ${item.expiry_date}`}
+            <div key={i} style={{
+              background: selected[i] ? '#f0fdf4' : '#f8fafc',
+              border: `1.5px solid ${selected[i] ? '#16a34a' : '#e2e8f0'}`,
+              borderRadius: 12, padding: '10px 12px'
+            }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))}
+                  style={{
+                    width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 2, cursor: 'pointer',
+                    border: `2px solid ${selected[i] ? '#16a34a' : '#cbd5e1'}`,
+                    background: selected[i] ? '#16a34a' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                  {selected[i] && <span style={{ color: '#fff', fontSize: 13 }}>✓</span>}
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
+                      onChange={e => setItemField(i, 'name_zh', e.target.value)} />
+                    <input style={{ ...smallField, flex: 1 }} type="number" value={item.quantity}
+                      onChange={e => setItemField(i, 'quantity', e.target.value)} />
+                    <select style={{ ...smallField, flex: 1 }} value={item.unit}
+                      onChange={e => setItemField(i, 'unit', e.target.value)}>
+                      {UNITS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select style={{ ...smallField, flex: 1 }} value={item.category || ''}
+                      onChange={e => setItemField(i, 'category', e.target.value)}>
+                      <option value="">分类</option>
+                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                    {receiptData && (
+                      <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {item.is_discount && <span style={{ color: '#ef4444', fontWeight: 600 }}>折扣</span>}
+                        {item.price && <span>¥{item.price}</span>}
+                        {item.original_price && item.is_discount && (
+                          <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>¥{item.original_price}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {item.name_original && (
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
+                  )}
+                  {item.discount_info && (
+                    <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
+                  )}
+                  <ExpirySection
+                    small
+                    mfgDate={item.mfg_date || ''}
+                    shelfDays={item.shelf_days || ''}
+                    expiryDate={item.expiry_date || ''}
+                    onMfg={v => setItemField(i, 'mfg_date', v)}
+                    onShelf={v => setItemField(i, 'shelf_days', v)}
+                    onExpiry={v => setItemField(i, 'expiry_date', v)}
+                  />
                 </div>
               </div>
             </div>
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <button onClick={() => { setAiItems([]); setSelected({}) }}
+          <button onClick={() => { setAiItems([]); setSelected({}); setReceiptData(null) }}
             style={{
               flex: 1, padding: '12px 0', borderRadius: 12,
-              background: '#f1f5f9', color: '#475569', fontSize: 15, fontWeight: 600
+              background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
             }}>重新识别</button>
           <button onClick={saveAiItems} disabled={saving} style={{
             flex: 2, padding: '12px 0', borderRadius: 12,
             background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700
-          }}>{saving ? '保存中...' : `保存选中项`}</button>
+          }}>{saving ? '保存中...' : '保存选中项'}</button>
         </div>
       </div>
     )
   }
 
-  // ── 条形码输入 ───────────────────────────────────────────
   function BarcodeTab() {
     const [code, setCode] = useState('')
     return (
@@ -336,8 +510,7 @@ export default function AddIngredient() {
           <div style={{ fontSize: 12, color: '#94a3b8' }}>相机扫描功能即将推出</div>
         </div>
         <input value={code} onChange={e => setCode(e.target.value)}
-          placeholder="例：4902102141734"
-          style={{ ...field, marginTop: 0 }}
+          placeholder="例：4902102141734" style={{ ...field, marginTop: 0 }}
           onKeyDown={e => e.key === 'Enter' && lookupBarcode(code)} />
         <button onClick={() => lookupBarcode(code)} disabled={!code || loading}
           style={{
@@ -355,14 +528,13 @@ export default function AddIngredient() {
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>添加食材</h1>
 
-      {/* Tab 切换 */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
         gap: 6, marginBottom: 20,
         background: '#f1f5f9', borderRadius: 12, padding: 4
       }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setAiItems([]); setSelected({}) }}
+          <button key={t.id} onClick={() => { setTab(t.id); setAiItems([]); setSelected({}); setReceiptData(null) }}
             style={{
               padding: '8px 0', borderRadius: 9, fontSize: 12, fontWeight: 600,
               background: tab === t.id ? '#fff' : 'transparent',
@@ -370,27 +542,20 @@ export default function AddIngredient() {
               boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2
             }}>
-            <span style={{ fontSize: 18 }}>{t.icon}</span>
-            {t.label}
+            <span style={{ fontSize: 18 }}>{t.icon}</span>{t.label}
           </button>
         ))}
       </div>
 
-      {/* 加载状态 */}
       {loading && (
-        <div style={{
-          textAlign: 'center', padding: '40px 0',
-          color: '#16a34a', fontSize: 15
-        }}>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#16a34a', fontSize: 15 }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>✨</div>
           AI 识别中，请稍候...
         </div>
       )}
 
-      {/* Tab 内容 */}
       {!loading && (
         <>
-          {/* 手动 */}
           {tab === 'manual' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
@@ -399,7 +564,7 @@ export default function AddIngredient() {
                   onChange={e => set('name_zh', e.target.value)} placeholder="例：牛奶" />
               </div>
               <div>
-                <div style={labelSt}>原文名称（日文/英文）</div>
+                <div style={labelSt}>原文名称</div>
                 <input style={field} value={form.name_original}
                   onChange={e => set('name_original', e.target.value)} placeholder="例：牛乳" />
               </div>
@@ -412,8 +577,7 @@ export default function AddIngredient() {
                 <div style={{ flex: 1 }}>
                   <div style={labelSt}>单位</div>
                   <select style={field} value={form.unit} onChange={e => set('unit', e.target.value)}>
-                    {['个','包','瓶','袋','克','毫升','升','根','片','块'].map(u =>
-                      <option key={u}>{u}</option>)}
+                    {UNITS.map(u => <option key={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
@@ -421,14 +585,15 @@ export default function AddIngredient() {
                 <div style={labelSt}>分类</div>
                 <select style={field} value={form.category} onChange={e => set('category', e.target.value)}>
                   <option value="">选择分类</option>
-                  {['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','其他'].map(c =>
-                    <option key={c}>{c}</option>)}
+                  {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div>
                 <div style={labelSt}>过期日期</div>
-                <input style={field} type="date" value={form.expiry_date}
-                  onChange={e => set('expiry_date', e.target.value)} />
+                <ExpirySection
+                  mfgDate={form.mfg_date} shelfDays={form.shelf_days} expiryDate={form.expiry_date}
+                  onMfg={v => set('mfg_date', v)} onShelf={v => set('shelf_days', v)}
+                  onExpiry={v => set('expiry_date', v)} />
               </div>
               <div>
                 <div style={labelSt}>存放位置</div>
@@ -443,30 +608,63 @@ export default function AddIngredient() {
                   ))}
                 </div>
               </div>
+              <div>
+                <div style={labelSt}>备注</div>
+                <input style={field} value={form.memo}
+                  onChange={e => set('memo', e.target.value)} placeholder="可选" />
+              </div>
               <button onClick={saveManual} disabled={saving} style={{
                 padding: '14px 0', borderRadius: 12, background: '#16a34a',
-                color: '#fff', fontSize: 16, fontWeight: 700, marginTop: 8
+                color: '#fff', fontSize: 16, fontWeight: 700, marginTop: 4
               }}>{saving ? '保存中...' : '保存食材'}</button>
             </div>
           )}
 
-          {/* 拍照 */}
           {tab === 'photo' && (
             <div>
-              {!aiItems.length && <UploadZone refEl={photoRef} type="photo" />}
+              {!aiItems.length && (
+                <div>
+                  <input type="file" accept="image/*" capture="environment"
+                    style={{ display: 'none' }} id="photo-input"
+                    onChange={e => { const f = e.target.files[0]; e.target.value = ''; handleImage(f, 'photo') }} />
+                  <button onClick={() => document.getElementById('photo-input').click()} style={{
+                    width: '100%', padding: '40px 0', borderRadius: 14,
+                    border: '2px dashed #cbd5e1', background: '#f8fafc',
+                    color: '#64748b', fontSize: 15, display: 'flex',
+                    flexDirection: 'column', alignItems: 'center', gap: 8
+                  }}>
+                    <span style={{ fontSize: 40 }}>📷</span>
+                    <span style={{ fontWeight: 600 }}>拍摄或选择食材照片</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>支持单个或多个食材</span>
+                  </button>
+                </div>
+              )}
               <AiResultList />
             </div>
           )}
 
-          {/* 小票 */}
           {tab === 'receipt' && (
             <div>
-              {!aiItems.length && <UploadZone refEl={receiptRef} type="receipt" />}
+              {!aiItems.length && (
+                <div>
+                  <input type="file" accept="image/*" style={{ display: 'none' }} id="receipt-input"
+                    onChange={e => { const f = e.target.files[0]; e.target.value = ''; handleImage(f, 'receipt') }} />
+                  <button onClick={() => document.getElementById('receipt-input').click()} style={{
+                    width: '100%', padding: '40px 0', borderRadius: 14,
+                    border: '2px dashed #cbd5e1', background: '#f8fafc',
+                    color: '#64748b', fontSize: 15, display: 'flex',
+                    flexDirection: 'column', alignItems: 'center', gap: 8
+                  }}>
+                    <span style={{ fontSize: 40 }}>🧾</span>
+                    <span style={{ fontWeight: 600 }}>拍摄或选择购物小票</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>识别商家、价格、折扣信息</span>
+                  </button>
+                </div>
+              )}
               <AiResultList />
             </div>
           )}
 
-          {/* 条形码 */}
           {tab === 'barcode' && <BarcodeTab />}
         </>
       )}
