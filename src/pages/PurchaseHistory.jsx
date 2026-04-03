@@ -20,6 +20,7 @@ export default function PurchaseHistory() {
   const [history, setHistory] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [editingItem, setEditingItem] = useState(null)
   const [editingHistory, setEditingHistory] = useState(null)
   const [confirm, setConfirm] = useState(null)
@@ -36,7 +37,6 @@ export default function PurchaseHistory() {
     setLoading(false)
   }
 
-  // ── 删除整个履历 ──────────────────────────────────────────
   function confirmDeleteHistory(h) {
     setConfirm({
       title: `删除「${h.store_name || '未知商家'}」的购物记录`,
@@ -59,7 +59,6 @@ export default function PurchaseHistory() {
     setHistory(history.filter(x => x.id !== h.id))
   }
 
-  // ── 删除单个商品 ──────────────────────────────────────────
   function confirmDeleteItem(historyId, item) {
     setConfirm({
       title: `删除「${item.name_zh}」`,
@@ -83,7 +82,6 @@ export default function PurchaseHistory() {
     ))
   }
 
-  // ── 编辑履历头部 ──────────────────────────────────────────
   async function saveHistoryEdit() {
     await supabase.from('purchase_history').update({
       store_name: editingHistory.store_name,
@@ -95,13 +93,12 @@ export default function PurchaseHistory() {
     setEditingHistory(null)
   }
 
-  // ── 编辑单个商品 ──────────────────────────────────────────
   function confirmSaveItem(item) {
     const orig = editingItem
     if (item.add_to_fridge) {
       setConfirm({
         title: `保存「${item.name_zh}」的修改`,
-        message: '同时更新冰箱中的对应食材（含过期日期）？',
+        message: '同时更新冰箱中的对应食材（含过期日期、备注）？',
         onYes: () => saveItemEdit(orig.historyId, item, true),
         onNo: () => saveItemEdit(orig.historyId, item, false),
         onCancel: () => setConfirm(null)
@@ -124,6 +121,7 @@ export default function PurchaseHistory() {
       is_discount: item.is_discount,
       discount_info: item.discount_info || null,
       expiry_date: item.expiry_date || null,
+      memo: item.memo || null,
     }).eq('id', item.id)
 
     if (alsoFridge) {
@@ -133,6 +131,7 @@ export default function PurchaseHistory() {
         quantity: Number(item.quantity) || 1,
         unit: item.unit,
         expiry_date: item.expiry_date || null,
+        memo: item.memo || null,
       }).eq('name_zh', editingItem.original_name_zh)
     }
 
@@ -143,9 +142,56 @@ export default function PurchaseHistory() {
     setEditingItem(null)
   }
 
+  const filteredHistory = history.map(h => {
+  if (!search) return { ...h, matchedItems: null }
+  const s = search.toLowerCase()
+
+  // 商家名匹配：显示全部商品
+  const storeMatch =
+    h.store_name?.toLowerCase().includes(s) ||
+    h.store_name_original?.toLowerCase().includes(s) ||
+    h.purchased_at?.includes(s)
+
+  if (storeMatch) return { ...h, matchedItems: null }
+
+  // 商品名匹配：只显示匹配的商品
+  const matchedItems = h.purchase_items?.filter(i =>
+    i.name_zh?.toLowerCase().includes(s) ||
+    i.name_original?.toLowerCase().includes(s) ||
+    i.memo?.toLowerCase().includes(s)
+  )
+
+  if (matchedItems?.length > 0) return { ...h, matchedItems }
+  return null
+}).filter(Boolean)
+
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>🧾 购物履历</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>🧾 购物履历</h1>
+
+      {/* 搜索框 */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{
+          position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 16, color: '#94a3b8', pointerEvents: 'none'
+        }}>🔍</span>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="搜索商家、商品名称..."
+          style={{
+            width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
+            border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
+            boxSizing: 'border-box'
+          }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1
+          }}>×</button>
+        )}
+      </div>
 
       {/* 确认弹窗 */}
       {confirm && (
@@ -301,8 +347,14 @@ export default function PurchaseHistory() {
                     onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, discount_info: e.target.value } }))} />
                 </div>
               )}
+              <div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>备注</div>
+                <input style={smallField} value={editingItem.item.memo || ''}
+                  onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, memo: e.target.value } }))}
+                  placeholder="可选" />
+              </div>
 
-              {/* 过期日期区域 */}
+              {/* 保质期区域 */}
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 4 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 8 }}>保质期信息</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -356,11 +408,13 @@ export default function PurchaseHistory() {
 
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
-      ) : history.length === 0 ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>暂无购物记录</p>
+      ) : filteredHistory.length === 0 ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>
+          {search ? '没有找到匹配的记录' : '暂无购物记录'}
+        </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {history.map(h => (
+          {filteredHistory.map(h => (
             <div key={h.id} style={{
               background: '#fff', borderRadius: 12, overflow: 'hidden',
               boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
@@ -371,7 +425,11 @@ export default function PurchaseHistory() {
                     style={{ flex: 1, cursor: 'pointer' }}>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>{h.store_name || '未知商家'}</div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                      {h.purchased_at || h.created_at?.split('T')[0]}
+                      {h.purchased_at || h.created_at?.split('T')[0]}{search && h.matchedItems && (
+                        <span style={{ color: '#16a34a', marginLeft: 6 }}>
+                          {h.matchedItems.length} 件匹配
+                        </span>
+                      )}
                       　{h.purchase_items?.length || 0} 件商品
                     </div>
                   </div>
@@ -395,9 +453,9 @@ export default function PurchaseHistory() {
                 </div>
               </div>
 
-              {expanded[h.id] && (
+              {(expanded[h.id] || (search && h.matchedItems)) && (
                 <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                  {h.purchase_items?.map(item => (
+                  {(h.matchedItems || h.purchase_items)?.map(item => (
                     <div key={item.id} style={{
                       padding: '10px 14px', borderBottom: '1px solid #f8fafc',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8
@@ -415,6 +473,9 @@ export default function PurchaseHistory() {
                         )}
                         {item.discount_info && (
                           <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
+                        )}
+                        {item.memo && (
+                          <div style={{ fontSize: 11, color: '#64748b' }}>备注：{item.memo}</div>
                         )}
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                           {item.quantity}{item.unit}

@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 
 export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [editing, setEditing] = useState(false)
+  const [consuming, setConsuming] = useState(false)
+  const [consumeQty, setConsumeQty] = useState('')
   const [form, setForm] = useState({
     name_zh: item.name_zh,
     category: item.category || '',
@@ -22,11 +24,24 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     : daysLeft <= 7 ? '#f59e0b'
     : '#16a34a'
 
+  const remaining = (item.quantity || 0) - (item.consumed_quantity || 0)
+
   async function updateQuantity(delta) {
     const newQty = Math.max(0, (item.quantity || 1) + delta)
     if (newQty === 0) { onDelete(item.id); return }
     await supabase.from('ingredients').update({ quantity: newQty }).eq('id', item.id)
     onUpdate({ ...item, quantity: newQty })
+  }
+
+  async function consumeItem(all) {
+    const qty = all ? remaining : Number(consumeQty)
+    if (!qty || qty <= 0) return alert('请输入有效的消耗数量')
+    if (qty > remaining) return alert(`最多可消耗 ${remaining}${item.unit}`)
+    const newConsumed = (item.consumed_quantity || 0) + qty
+    await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
+    onUpdate({ ...item, consumed_quantity: newConsumed })
+    setConsuming(false)
+    setConsumeQty('')
   }
 
   async function saveEdit() {
@@ -54,16 +69,13 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <input style={field} value={form.name_zh}
-          onChange={e => setForm(f => ({ ...f, name_zh: e.target.value }))}
-          placeholder="食材名称" />
+          onChange={e => setForm(f => ({ ...f, name_zh: e.target.value }))} placeholder="食材名称" />
         <div style={{ display: 'flex', gap: 8 }}>
           <input style={{ ...field, flex: 1 }} type="number" value={form.quantity}
-            onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
-            placeholder="数量" />
+            onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="数量" />
           <select style={{ ...field, flex: 1 }} value={form.unit}
             onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-            {['个','包','瓶','袋','克','毫升','升','根','片','块'].map(u =>
-              <option key={u}>{u}</option>)}
+            {['个','包','瓶','袋','克','毫升','升','根','片','块'].map(u => <option key={u}>{u}</option>)}
           </select>
         </div>
         <select style={field} value={form.category}
@@ -75,8 +87,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
         <input style={field} type="date" value={form.expiry_date}
           onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
         <input style={field} value={form.memo}
-          onChange={e => setForm(f => ({ ...f, memo: e.target.value }))}
-          placeholder="备注（可选）" />
+          onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="备注（可选）" />
         <div style={{ display: 'flex', gap: 8 }}>
           {[['fridge','冰箱'],['freezer','冷冻'],['pantry','常温']].map(([v, l]) => (
             <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
@@ -139,15 +150,43 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
           width: 28, height: 28, borderRadius: 8, background: '#f1f5f9',
           color: '#475569', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>−</button>
-        <span style={{ fontSize: 15, fontWeight: 600, minWidth: 40, textAlign: 'center' }}>
-          {item.quantity || 1}{item.unit}
+        <span style={{ fontSize: 15, fontWeight: 600, minWidth: 60, textAlign: 'center' }}>
+          {remaining}{item.unit}
+          {(item.consumed_quantity || 0) > 0 && (
+            <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>
+              (已用{item.consumed_quantity})
+            </span>
+          )}
         </span>
         <button onClick={() => updateQuantity(1)} style={{
           width: 28, height: 28, borderRadius: 8, background: '#f1f5f9',
           color: '#475569', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>+</button>
-        <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>点击名称编辑</span>
+        <button onClick={() => { setConsuming(!consuming); setConsumeQty('') }} style={{
+          marginLeft: 'auto', padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+          background: consuming ? '#f1f5f9' : '#fef3c7', color: consuming ? '#475569' : '#92400e'
+        }}>{consuming ? '取消' : '消耗'}</button>
       </div>
+
+      {/* 消耗面板 */}
+      {consuming && (
+        <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="number" value={consumeQty} onChange={e => setConsumeQty(e.target.value)}
+            placeholder={`数量（最多${remaining}）`}
+            style={{
+              flex: 1, padding: '7px 10px', borderRadius: 8, fontSize: 13,
+              border: '1.5px solid #e2e8f0', outline: 'none'
+            }} />
+          <button onClick={() => consumeItem(false)} style={{
+            padding: '7px 12px', borderRadius: 8, background: '#f59e0b',
+            color: '#fff', fontSize: 13, fontWeight: 600
+          }}>消耗</button>
+          <button onClick={() => consumeItem(true)} style={{
+            padding: '7px 12px', borderRadius: 8, background: '#ef4444',
+            color: '#fff', fontSize: 13, fontWeight: 600
+          }}>全部</button>
+        </div>
+      )}
     </div>
   )
 }

@@ -2,22 +2,21 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import IngredientCard from '../components/IngredientCard'
 
-const DEMO_FAMILY_ID = 'demo-family-001'
-
 export default function Fridge() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => { fetchItems() }, [])
 
   async function fetchItems() {
     setLoading(true)
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('ingredients')
       .select('*')
       .order('expiry_date', { ascending: true, nullsFirst: false })
-    setItems(data || [])
+    setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
     setLoading(false)
   }
 
@@ -27,15 +26,54 @@ export default function Fridge() {
   }
 
   function updateItem(updated) {
-    setItems(items.map(i => i.id === updated.id ? updated : i))
+    const remaining = (updated.quantity || 0) - (updated.consumed_quantity || 0)
+    if (remaining <= 0) {
+      setItems(items.filter(i => i.id !== updated.id))
+    } else {
+      setItems(items.map(i => i.id === updated.id ? updated : i))
+    }
   }
 
   const categories = ['all', ...new Set(items.map(i => i.category).filter(Boolean))]
-  const filtered = filter === 'all' ? items : items.filter(i => i.category === filter)
+
+  const filtered = items.filter(i => {
+    const matchCat = filter === 'all' || i.category === filter
+    const matchSearch = !search ||
+      i.name_zh?.includes(search) ||
+      i.name_original?.includes(search) ||
+      i.category?.includes(search)
+    return matchCat && matchSearch
+  })
 
   return (
     <div style={{ padding: '16px 16px 0' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>🧊 我的冰箱</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>🧊 我的物品</h1>
+
+      {/* 搜索框 */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <span style={{
+          position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 16, color: '#94a3b8', pointerEvents: 'none'
+        }}>🔍</span>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="搜索食材名称、分类..."
+          style={{
+            width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
+            border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
+            boxSizing: 'border-box'
+          }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1
+          }}>×</button>
+        )}
+      </div>
+
+      {/* 分类筛选 */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 16 }}>
         {categories.map(c => (
           <button key={c} onClick={() => setFilter(c)} style={{
@@ -45,10 +83,13 @@ export default function Fridge() {
           }}>{c === 'all' ? '全部' : c}</button>
         ))}
       </div>
+
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
       ) : filtered.length === 0 ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>冰箱是空的，去添加食材吧</p>
+        <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>
+          {search ? '没有找到匹配的物品' : '物品是空的，去添加食材吧'}
+        </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map(item => (
