@@ -1,13 +1,28 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+function calcExpiry(mfgDate, shelfDays) {
+  if (!mfgDate || !shelfDays) return ''
+  const d = new Date(mfgDate)
+  d.setDate(d.getDate() + Number(shelfDays))
+  return d.toISOString().split('T')[0]
+}
+
+const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
+const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','零食','其他','非食材']
+
+const smallField = {
+  width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
+  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+}
+
 export default function PurchaseHistory() {
   const [history, setHistory] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
-  const [editingItem, setEditingItem] = useState(null) // {historyId, item}
-  const [confirm, setConfirm] = useState(null) // 确认弹窗状态
-  const [editingHistory, setEditingHistory] = useState(null) // 编辑履历头部
+  const [editingItem, setEditingItem] = useState(null)
+  const [editingHistory, setEditingHistory] = useState(null)
+  const [confirm, setConfirm] = useState(null)
 
   useEffect(() => { fetchHistory() }, [])
 
@@ -21,7 +36,7 @@ export default function PurchaseHistory() {
     setLoading(false)
   }
 
-  // ── 删除整个履历 ─────────────────────────────────────────
+  // ── 删除整个履历 ──────────────────────────────────────────
   function confirmDeleteHistory(h) {
     setConfirm({
       title: `删除「${h.store_name || '未知商家'}」的购物记录`,
@@ -44,12 +59,12 @@ export default function PurchaseHistory() {
     setHistory(history.filter(x => x.id !== h.id))
   }
 
-  // ── 删除单个履历商品 ──────────────────────────────────────
+  // ── 删除单个商品 ──────────────────────────────────────────
   function confirmDeleteItem(historyId, item) {
     setConfirm({
       title: `删除「${item.name_zh}」`,
       message: item.add_to_fridge ? '同时删除已存入冰箱的该食材？' : null,
-      onYes: () => deleteItem(historyId, item, true),
+      onYes: item.add_to_fridge ? () => deleteItem(historyId, item, true) : null,
       onNo: item.add_to_fridge ? () => deleteItem(historyId, item, false) : null,
       onConfirm: !item.add_to_fridge ? () => deleteItem(historyId, item, false) : null,
       onCancel: () => setConfirm(null)
@@ -58,7 +73,7 @@ export default function PurchaseHistory() {
 
   async function deleteItem(historyId, item, alsoFridge) {
     setConfirm(null)
-    if (alsoFridge && item.add_to_fridge) {
+    if (alsoFridge) {
       await supabase.from('ingredients').delete().eq('name_zh', item.name_zh)
     }
     await supabase.from('purchase_items').delete().eq('id', item.id)
@@ -68,7 +83,34 @@ export default function PurchaseHistory() {
     ))
   }
 
-  // ── 保存编辑单个商品 ──────────────────────────────────────
+  // ── 编辑履历头部 ──────────────────────────────────────────
+  async function saveHistoryEdit() {
+    await supabase.from('purchase_history').update({
+      store_name: editingHistory.store_name,
+      store_name_original: editingHistory.store_name_original,
+      purchased_at: editingHistory.purchased_at || null,
+      total_amount: editingHistory.total_amount ? Number(editingHistory.total_amount) : null
+    }).eq('id', editingHistory.id)
+    setHistory(history.map(h => h.id === editingHistory.id ? { ...h, ...editingHistory } : h))
+    setEditingHistory(null)
+  }
+
+  // ── 编辑单个商品 ──────────────────────────────────────────
+  function confirmSaveItem(item) {
+    const orig = editingItem
+    if (item.add_to_fridge) {
+      setConfirm({
+        title: `保存「${item.name_zh}」的修改`,
+        message: '同时更新冰箱中的对应食材（含过期日期）？',
+        onYes: () => saveItemEdit(orig.historyId, item, true),
+        onNo: () => saveItemEdit(orig.historyId, item, false),
+        onCancel: () => setConfirm(null)
+      })
+    } else {
+      saveItemEdit(orig.historyId, item, false)
+    }
+  }
+
   async function saveItemEdit(historyId, item, alsoFridge) {
     setConfirm(null)
     await supabase.from('purchase_items').update({
@@ -81,14 +123,16 @@ export default function PurchaseHistory() {
       original_price: item.original_price || null,
       is_discount: item.is_discount,
       discount_info: item.discount_info || null,
+      expiry_date: item.expiry_date || null,
     }).eq('id', item.id)
 
-    if (alsoFridge && item.add_to_fridge) {
+    if (alsoFridge) {
       await supabase.from('ingredients').update({
         name_zh: item.name_zh,
         category: item.category,
         quantity: Number(item.quantity) || 1,
         unit: item.unit,
+        expiry_date: item.expiry_date || null,
       }).eq('name_zh', editingItem.original_name_zh)
     }
 
@@ -98,43 +142,6 @@ export default function PurchaseHistory() {
     ))
     setEditingItem(null)
   }
-
-  function confirmSaveItem(item) {
-    const orig = editingItem
-    if (item.add_to_fridge) {
-      setConfirm({
-        title: `保存「${item.name_zh}」的修改`,
-        message: '同时更新冰箱中的对应食材？',
-        onYes: () => saveItemEdit(orig.historyId, item, true),
-        onNo: () => saveItemEdit(orig.historyId, item, false),
-        onCancel: () => setConfirm(null)
-      })
-    } else {
-      saveItemEdit(orig.historyId, item, false)
-    }
-  }
-
-  async function saveHistoryEdit() {
-  await supabase.from('purchase_history').update({
-    store_name: editingHistory.store_name,
-    store_name_original: editingHistory.store_name_original,
-    purchased_at: editingHistory.purchased_at || null,
-    total_amount: editingHistory.total_amount ? Number(editingHistory.total_amount) : null
-  }).eq('id', editingHistory.id)
-
-  setHistory(history.map(h => h.id === editingHistory.id
-    ? { ...h, ...editingHistory }
-    : h
-  ))
-  setEditingHistory(null)
-}
-
-  const smallField = {
-    width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
-  }
-  const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
-  const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','零食','其他','非食材']
 
   return (
     <div style={{ padding: 16 }}>
@@ -149,32 +156,24 @@ export default function PurchaseHistory() {
         }}>
           <div style={{
             background: '#fff', borderRadius: 16, padding: 24,
-            width: '100%', maxWidth: 360, boxShadow: '0 8px 32px rgba(0,0,0,0.15)'
+            width: '100%', maxWidth: 360
           }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{confirm.title}</div>
             {confirm.message && (
               <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>{confirm.message}</div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* 有 yes/no 的情况（询问是否同步冰箱） */}
               {confirm.onYes && (
-                <>
-                  <button onClick={confirm.onYes} style={{
-                    padding: '11px 0', borderRadius: 10, background: '#ef4444',
-                    color: '#fff', fontSize: 15, fontWeight: 700
-                  }}>是，同步删除/更新冰箱</button>
-                  <button onClick={confirm.onNo} style={{
-                    padding: '11px 0', borderRadius: 10, background: '#f1f5f9',
-                    color: '#475569', fontSize: 15, fontWeight: 600
-                  }}>否，仅操作履历</button>
-                </>
-              )}
-              {/* 无冰箱关联的简单确认 */}
-              {confirm.onConfirm && (
-                <button onClick={confirm.onConfirm} style={{
+                <button onClick={confirm.onYes} style={{
                   padding: '11px 0', borderRadius: 10, background: '#ef4444',
                   color: '#fff', fontSize: 15, fontWeight: 700
-                }}>确认删除</button>
+                }}>是，同步操作冰箱</button>
+              )}
+              {(confirm.onNo || confirm.onConfirm) && (
+                <button onClick={confirm.onNo || confirm.onConfirm} style={{
+                  padding: '11px 0', borderRadius: 10, background: '#f1f5f9',
+                  color: '#475569', fontSize: 15, fontWeight: 600
+                }}>{confirm.onYes ? '否，仅操作履历' : '确认删除'}</button>
               )}
               <button onClick={confirm.onCancel} style={{
                 padding: '11px 0', borderRadius: 10, background: '#fff',
@@ -184,64 +183,65 @@ export default function PurchaseHistory() {
           </div>
         </div>
       )}
+
       {/* 编辑履历头部弹窗 */}
-        {editingHistory && (
+      {editingHistory && (
         <div style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            zIndex: 999
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          zIndex: 999
         }}>
-            <div style={{
+          <div style={{
             background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
             width: '100%', maxWidth: 430
-            }}>
+          }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>编辑购物记录</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
+              <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>商家名称（中文）</div>
                 <input style={smallField} value={editingHistory.store_name || ''}
-                    onChange={e => setEditingHistory(h => ({ ...h, store_name: e.target.value }))} />
-                </div>
-                <div>
+                  onChange={e => setEditingHistory(h => ({ ...h, store_name: e.target.value }))} />
+              </div>
+              <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>商家原文名称</div>
                 <input style={smallField} value={editingHistory.store_name_original || ''}
-                    onChange={e => setEditingHistory(h => ({ ...h, store_name_original: e.target.value }))} />
-                </div>
-                <div>
+                  onChange={e => setEditingHistory(h => ({ ...h, store_name_original: e.target.value }))} />
+              </div>
+              <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>购买日期</div>
                 <input style={smallField} type="date" value={editingHistory.purchased_at || ''}
-                    onChange={e => setEditingHistory(h => ({ ...h, purchased_at: e.target.value }))} />
-                </div>
-                <div>
+                  onChange={e => setEditingHistory(h => ({ ...h, purchased_at: e.target.value }))} />
+              </div>
+              <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>合计金额（¥）</div>
                 <input style={smallField} type="number" value={editingHistory.total_amount || ''}
-                    onChange={e => setEditingHistory(h => ({ ...h, total_amount: e.target.value }))} />
-                </div>
+                  onChange={e => setEditingHistory(h => ({ ...h, total_amount: e.target.value }))} />
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <button onClick={() => setEditingHistory(null)} style={{
+              <button onClick={() => setEditingHistory(null)} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10,
                 background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
-                }}>取消</button>
-                <button onClick={saveHistoryEdit} style={{
+              }}>取消</button>
+              <button onClick={saveHistoryEdit} style={{
                 flex: 2, padding: '11px 0', borderRadius: 10,
                 background: '#16a34a', color: '#fff', fontSize: 14, fontWeight: 700
-                }}>保存</button>
+              }}>保存</button>
             </div>
-            </div>
+          </div>
         </div>
-        )}
+      )}
 
       {/* 编辑单个商品弹窗 */}
       {editingItem && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 999, padding: '0 0 0 0'
+          zIndex: 999
         }}>
           <div style={{
             background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
-            width: '100%', maxWidth: 430, maxHeight: '80vh', overflowY: 'auto'
+            width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto'
           }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>编辑商品</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -263,7 +263,7 @@ export default function PurchaseHistory() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>单位</div>
-                  <select style={smallField} value={editingItem.item.unit}
+                  <select style={smallField} value={editingItem.item.unit || '个'}
                     onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, unit: e.target.value } }))}>
                     {UNITS.map(u => <option key={u}>{u}</option>)}
                   </select>
@@ -301,7 +301,45 @@ export default function PurchaseHistory() {
                     onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, discount_info: e.target.value } }))} />
                 </div>
               )}
+
+              {/* 过期日期区域 */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 8 }}>保质期信息</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>生产日期</div>
+                    <input style={smallField} type="date" value={editingItem.item.mfg_date || ''}
+                      onChange={e => {
+                        const v = e.target.value
+                        setEditingItem(ei => {
+                          const shelf = ei.item.shelf_days
+                          const expiry = v && shelf ? calcExpiry(v, shelf) : ei.item.expiry_date
+                          return { ...ei, item: { ...ei.item, mfg_date: v, expiry_date: expiry } }
+                        })
+                      }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>保质期（天）</div>
+                    <input style={smallField} type="number" placeholder="如：180"
+                      value={editingItem.item.shelf_days || ''}
+                      onChange={e => {
+                        const v = e.target.value
+                        setEditingItem(ei => {
+                          const mfg = ei.item.mfg_date
+                          const expiry = mfg && v ? calcExpiry(mfg, v) : ei.item.expiry_date
+                          return { ...ei, item: { ...ei.item, shelf_days: v, expiry_date: expiry } }
+                        })
+                      }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>过期日期</div>
+                  <input style={smallField} type="date" value={editingItem.item.expiry_date || ''}
+                    onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, expiry_date: e.target.value } }))} />
+                </div>
+              </div>
             </div>
+
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={() => setEditingItem(null)} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10,
@@ -327,10 +365,6 @@ export default function PurchaseHistory() {
               background: '#fff', borderRadius: 12, overflow: 'hidden',
               boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
             }}>
-              <button onClick={() => setEditingHistory({ ...h })} style={{
-                background: '#f1f5f9', color: '#475569', fontSize: 13,
-                padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                }}>编辑</button>
               <div style={{ padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
@@ -341,22 +375,26 @@ export default function PurchaseHistory() {
                       　{h.purchase_items?.length || 0} 件商品
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                     {h.total_amount && (
                       <div style={{ fontWeight: 700, color: '#16a34a' }}>¥{h.total_amount}</div>
                     )}
+                    <button onClick={() => setEditingHistory({ ...h })} style={{
+                      background: '#f1f5f9', color: '#475569', fontSize: 13,
+                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                    }}>编辑</button>
                     <button onClick={() => confirmDeleteHistory(h)} style={{
-                      background: 'none', color: '#ef4444', fontSize: 18, lineHeight: 1, padding: '0 4px'
-                    }}>🗑</button>
+                      background: '#fef2f2', color: '#ef4444', fontSize: 13,
+                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                    }}>删除</button>
                     <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
-                      style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer' }}>
+                      style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
                       {expanded[h.id] ? '▲' : '▼'}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 商品列表 */}
               {expanded[h.id] && (
                 <div style={{ borderTop: '1px solid #f1f5f9' }}>
                   {h.purchase_items?.map(item => (
@@ -390,12 +428,15 @@ export default function PurchaseHistory() {
                               )}
                             </span>
                           )}
+                          {item.expiry_date && (
+                            <span style={{ marginLeft: 6, color: '#94a3b8' }}>到期 {item.expiry_date}</span>
+                          )}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                         <button onClick={() => setEditingItem({
                           historyId: h.id,
-                          item: { ...item },
+                          item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' },
                           original_name_zh: item.name_zh
                         })} style={{
                           background: '#f1f5f9', color: '#475569', fontSize: 13,
