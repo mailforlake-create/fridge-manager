@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
@@ -71,7 +71,6 @@ async function recognizeReceipt(file) {
   const base64 = await fileToBase64(file)
   const mediaType = file.type || 'image/jpeg'
 
-  // 第一步：只识别商家信息 + 商品名称列表
   const step1Text = await callClaude([{
     role: 'user',
     content: [
@@ -95,7 +94,6 @@ async function recognizeReceipt(file) {
     const c1 = step1Text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     step1 = JSON.parse(c1)
   } catch {
-    // 截断时容错
     const storeMatch = step1Text.match(/"store_name"\s*:\s*"([^"]*)"/)
     const storeOrigMatch = step1Text.match(/"store_name_original"\s*:\s*"([^"]*)"/)
     const dateMatch = step1Text.match(/"purchased_at"\s*:\s*"([^"]*)"/)
@@ -117,7 +115,6 @@ async function recognizeReceipt(file) {
 
   if (!step1?.items?.length) return null
 
-  // 第二步：把原文商品名批量翻译+分类
   const names = step1.items.map(i => i.name_original).join('\n')
   const step2Text = await callClaude([{
     role: 'user',
@@ -137,7 +134,6 @@ ${names}
     console.error('翻译解析失败', e)
   }
 
-  // 合并两步结果
   const items = step1.items.map((item, i) => {
     const trans = translations[i] || {}
     return {
@@ -152,7 +148,8 @@ ${names}
       discount_info: item.discount_info || '',
       expiry_date: '',
       mfg_date: '',
-      shelf_days: ''
+      shelf_days: '',
+      memo: ''
     }
   })
 
@@ -166,9 +163,9 @@ ${names}
 }
 
 const TABS = [
-  { id: 'manual', label: '手动', icon: '✏️' },
-  { id: 'photo', label: '拍照', icon: '📷' },
   { id: 'receipt', label: '小票', icon: '🧾' },
+  { id: 'photo', label: '拍照', icon: '📷' },
+  { id: 'manual', label: '手动', icon: '✏️' },
   { id: 'barcode', label: '条形码', icon: '📦' },
 ]
 
@@ -179,7 +176,51 @@ const EMPTY_FORM = {
 }
 
 const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
-const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','其他']
+const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','零食','其他']
+
+// 详情弹窗
+function ItemDetailModal({ item, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
+        width: '100%', maxWidth: 430, maxHeight: '70vh', overflowY: 'auto'
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 16 }}>{item.name_zh}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            ['原文名称', item.name_original],
+            ['分类', item.category],
+            ['数量', item.quantity && item.unit ? `${item.quantity}${item.unit}` : null],
+            ['实付价格', item.price ? `¥${item.price}` : null],
+            ['原价', item.original_price ? `¥${item.original_price}` : null],
+            ['折扣说明', item.discount_info],
+            ['过期日期', item.expiry_date],
+            ['备注', item.memo],
+          ].filter(([, v]) => v).map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', gap: 12 }}>
+              <span style={{ fontSize: 13, color: '#94a3b8', width: 72, flexShrink: 0 }}>{label}</span>
+              <span style={{ fontSize: 14, color: '#1e293b' }}>{value}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 12 }}>
+            <span style={{ fontSize: 13, color: '#94a3b8', width: 72, flexShrink: 0 }}>入库状态</span>
+            <span style={{ fontSize: 14, color: item.add_to_fridge ? '#16a34a' : '#94a3b8' }}>
+              {item.add_to_fridge ? '已入库' : '未入库'}
+            </span>
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          width: '100%', marginTop: 20, padding: '12px 0', borderRadius: 12,
+          background: '#f1f5f9', color: '#475569', fontSize: 15, fontWeight: 600
+        }}>关闭</button>
+      </div>
+    </div>
+  )
+}
 
 export default function AddIngredient() {
   const navigate = useNavigate()
@@ -190,6 +231,7 @@ export default function AddIngredient() {
   const [receiptData, setReceiptData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [detailItem, setDetailItem] = useState(null)
 
   const set = (k, v) => setForm(f => {
     const next = { ...f, [k]: v }
@@ -202,7 +244,8 @@ export default function AddIngredient() {
     return next
   })
 
-  function setItemField(i, k, v) {
+  // 修复光标消失：用 index 作为 key，用 useCallback 避免重渲染
+  const setItemField = useCallback((i, k, v) => {
     setAiItems(items => {
       const next = [...items]
       next[i] = { ...next[i], [k]: v }
@@ -214,7 +257,7 @@ export default function AddIngredient() {
       }
       return next
     })
-  }
+  }, [])
 
   async function handleImage(file, type) {
     if (!file) return
@@ -227,7 +270,7 @@ export default function AddIngredient() {
         const data = await recognizeReceipt(file)
         if (data && data.items) {
           setReceiptData(data)
-          const items = data.items.map(i => ({ ...i, mfg_date: '', shelf_days: '' }))
+          const items = data.items.map(i => ({ ...i, mfg_date: '', shelf_days: '', memo: '' }))
           setAiItems(items)
           const sel = {}
           items.forEach((item, i) => { sel[i] = item.category !== '非食材' })
@@ -237,7 +280,7 @@ export default function AddIngredient() {
         }
       } else {
         const items = await recognizePhoto(file)
-        const itemsWithExtra = items.map(i => ({ ...i, mfg_date: '', shelf_days: '' }))
+        const itemsWithExtra = items.map(i => ({ ...i, mfg_date: '', shelf_days: '', memo: '' }))
         setAiItems(itemsWithExtra)
         const sel = {}
         itemsWithExtra.forEach((_, i) => { sel[i] = true })
@@ -250,7 +293,6 @@ export default function AddIngredient() {
   }
 
   async function mergeOrInsert(item) {
-    // 查找同名食材
     const { data: existing } = await supabase
       .from('ingredients')
       .select('id, quantity')
@@ -266,11 +308,9 @@ export default function AddIngredient() {
   }
 
   async function saveAiItems() {
-    const toSave = aiItems.filter((_, i) => selected[i])
-    if (!toSave.length) return alert('请至少选择一项')
+    // 移除「至少选一件」的限制
     setSaving(true)
 
-    // 保存购物履历
     if (receiptData) {
       const { data: history } = await supabase
         .from('purchase_history')
@@ -294,15 +334,15 @@ export default function AddIngredient() {
           is_discount: item.is_discount || false,
           discount_info: item.discount_info || null,
           add_to_fridge: selected[i] && item.category !== '非食材',
-          expiry_date: item.expiry_date || null
+          expiry_date: item.expiry_date || null,
+          memo: item.memo || null,
         }))
         await supabase.from('purchase_items').insert(historyItems)
       }
     }
 
-    // 存入冰箱（同名合并）
-    const fridgeItems = toSave
-      .filter(i => i.category !== '非食材')
+    const fridgeItems = aiItems
+      .filter((item, i) => selected[i] && item.category !== '非食材')
       .map(item => ({
         name_zh: item.name_zh,
         name_original: item.name_original || null,
@@ -310,6 +350,7 @@ export default function AddIngredient() {
         quantity: Number(item.quantity) || 1,
         unit: item.unit || '个',
         expiry_date: item.expiry_date || null,
+        memo: item.memo || null,
         location: 'fridge'
       }))
 
@@ -371,7 +412,6 @@ export default function AddIngredient() {
   }
   const labelSt = { fontSize: 13, fontWeight: 600, color: '#475569' }
 
-  // 生产日期+保质期输入组件（手动和AI列表共用）
   function ExpirySection({ mfgDate, shelfDays, expiryDate, onMfg, onShelf, onExpiry, small }) {
     const f = small ? smallField : field
     return (
@@ -395,9 +435,12 @@ export default function AddIngredient() {
     )
   }
 
-  // AI识别结果列表（拍照/小票共用）
+  // AI 识别结果列表 — 用稳定 key 修复光标消失问题
   function AiResultList() {
     if (!aiItems.length) return null
+    const allSelected = aiItems.every((item, i) => item.category === '非食材' || selected[i])
+    const noneSelected = aiItems.every((item, i) => item.category === '非食材' || !selected[i])
+
     return (
       <div style={{ marginTop: 16 }}>
         {receiptData && (
@@ -414,9 +457,30 @@ export default function AddIngredient() {
             </div>
           </div>
         )}
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8 }}>
-          识别到 {aiItems.length} 件商品，勾选存入冰箱：
+
+        {/* 全选/全不选 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
+            识别到 {aiItems.length} 件，勾选存入物品：
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => {
+              const sel = {}
+              aiItems.forEach((_, i) => { sel[i] = true })
+              setSelected(sel)
+            }} style={{
+              padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+              background: allSelected ? '#16a34a' : '#f1f5f9',
+              color: allSelected ? '#fff' : '#475569'
+            }}>全选</button>
+            <button onClick={() => setSelected({})} style={{
+              padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+              background: noneSelected ? '#475569' : '#f1f5f9',
+              color: noneSelected ? '#fff' : '#475569'
+            }}>全不选</button>
+          </div>
         </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {aiItems.map((item, i) => (
             <div key={i} style={{
@@ -435,26 +499,40 @@ export default function AddIngredient() {
                   {selected[i] && <span style={{ color: '#fff', fontSize: 13 }}>✓</span>}
                 </div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {/* 名称 — 独立 input，不在子组件里，避免重渲染导致光标丢失 */}
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
-                      onChange={e => setItemField(i, 'name_zh', e.target.value)} />
-                    <input style={{ ...smallField, flex: 1 }} type="number" value={item.quantity}
-                      onChange={e => setItemField(i, 'quantity', e.target.value)} />
-                    <select style={{ ...smallField, flex: 1 }} value={item.unit}
-                      onChange={e => setItemField(i, 'unit', e.target.value)}>
+                    <input
+                      style={{ ...smallField, flex: 2 }}
+                      value={item.name_zh}
+                      onChange={e => setItemField(i, 'name_zh', e.target.value)}
+                    />
+                    <input
+                      style={{ ...smallField, flex: 1 }}
+                      type="number"
+                      value={item.quantity}
+                      onChange={e => setItemField(i, 'quantity', e.target.value)}
+                    />
+                    <select
+                      style={{ ...smallField, flex: 1 }}
+                      value={item.unit}
+                      onChange={e => setItemField(i, 'unit', e.target.value)}
+                    >
                       {UNITS.map(u => <option key={u}>{u}</option>)}
                     </select>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <select style={{ ...smallField, flex: 1 }} value={item.category || ''}
-                      onChange={e => setItemField(i, 'category', e.target.value)}>
+                    <select
+                      style={{ ...smallField, flex: 1 }}
+                      value={item.category || ''}
+                      onChange={e => setItemField(i, 'category', e.target.value)}
+                    >
                       <option value="">分类</option>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      {[...CATEGORIES, '非食材'].map(c => <option key={c}>{c}</option>)}
                     </select>
-                    {receiptData && (
+                    {receiptData && item.price && (
                       <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
                         {item.is_discount && <span style={{ color: '#ef4444', fontWeight: 600 }}>折扣</span>}
-                        {item.price && <span>¥{item.price}</span>}
+                        <span>¥{item.price}</span>
                         {item.original_price && item.is_discount && (
                           <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>¥{item.original_price}</span>
                         )}
@@ -467,6 +545,14 @@ export default function AddIngredient() {
                   {item.discount_info && (
                     <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
                   )}
+                  {/* 备注 */}
+                  <input
+                    style={{ ...smallField }}
+                    value={item.memo || ''}
+                    placeholder="备注（可选）"
+                    onChange={e => setItemField(i, 'memo', e.target.value)}
+                  />
+                  {/* 保质期 */}
                   <ExpirySection
                     small
                     mfgDate={item.mfg_date || ''}
@@ -481,6 +567,7 @@ export default function AddIngredient() {
             </div>
           ))}
         </div>
+
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <button onClick={() => { setAiItems([]); setSelected({}); setReceiptData(null) }}
             style={{
@@ -490,7 +577,7 @@ export default function AddIngredient() {
           <button onClick={saveAiItems} disabled={saving} style={{
             flex: 2, padding: '12px 0', borderRadius: 12,
             background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700
-          }}>{saving ? '保存中...' : '保存选中项'}</button>
+          }}>{saving ? '保存中...' : receiptData ? '保存小票' : '保存选中项'}</button>
         </div>
       </div>
     )
@@ -528,6 +615,7 @@ export default function AddIngredient() {
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>添加食材</h1>
 
+      {/* Tab */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
         gap: 6, marginBottom: 20,
@@ -556,6 +644,7 @@ export default function AddIngredient() {
 
       {!loading && (
         <>
+          {/* 手动 */}
           {tab === 'manual' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
@@ -620,6 +709,7 @@ export default function AddIngredient() {
             </div>
           )}
 
+          {/* 拍照 */}
           {tab === 'photo' && (
             <div>
               {!aiItems.length && (
@@ -643,6 +733,7 @@ export default function AddIngredient() {
             </div>
           )}
 
+          {/* 小票 */}
           {tab === 'receipt' && (
             <div>
               {!aiItems.length && (
@@ -665,9 +756,13 @@ export default function AddIngredient() {
             </div>
           )}
 
+          {/* 条形码 */}
           {tab === 'barcode' && <BarcodeTab />}
         </>
       )}
+
+      {/* 详情弹窗 */}
+      {detailItem && <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
     </div>
   )
 }

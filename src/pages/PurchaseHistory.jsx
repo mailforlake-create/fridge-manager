@@ -15,7 +15,53 @@ const smallField = {
   width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
   border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
 }
-
+function ItemDetailModal({ item, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1001
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
+        width: '100%', maxWidth: 430, maxHeight: '70vh', overflowY: 'auto'
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 16 }}>{item.name_zh}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            ['原文名称', item.name_original],
+            ['分类', item.category],
+            ['数量', item.quantity && item.unit ? `${item.quantity}${item.unit}` : null],
+            ['实付价格', item.price ? `¥${item.price}` : null],
+            ['原价', item.original_price ? `¥${item.original_price}` : null],
+            ['折扣说明', item.discount_info],
+            ['过期日期', item.expiry_date],
+            ['备注', item.memo],
+          ].filter(([, v]) => v).map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', gap: 12 }}>
+              <span style={{ fontSize: 13, color: '#94a3b8', width: 72, flexShrink: 0 }}>{label}</span>
+              <span style={{ fontSize: 14, color: '#1e293b' }}>{value}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 12 }}>
+            <span style={{ fontSize: 13, color: '#94a3b8', width: 72, flexShrink: 0 }}>入库状态</span>
+            <span style={{ fontSize: 14 }}>
+              {!item.add_to_fridge
+                ? <span style={{ color: '#94a3b8' }}>未入库</span>
+                : item.is_fully_consumed
+                  ? <span style={{ color: '#94a3b8' }}>已使用</span>
+                  : <span style={{ color: '#16a34a' }}>已入库</span>
+              }
+            </span>
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          width: '100%', marginTop: 20, padding: '12px 0', borderRadius: 12,
+          background: '#f1f5f9', color: '#475569', fontSize: 15, fontWeight: 600
+        }}>关闭</button>
+      </div>
+    </div>
+  )
+}
 export default function PurchaseHistory() {
   const [history, setHistory] = useState([])
   const [expanded, setExpanded] = useState({})
@@ -24,6 +70,7 @@ export default function PurchaseHistory() {
   const [editingItem, setEditingItem] = useState(null)
   const [editingHistory, setEditingHistory] = useState(null)
   const [confirm, setConfirm] = useState(null)
+  const [detailItem, setDetailItem] = useState(null)
 
   useEffect(() => { fetchHistory() }, [])
 
@@ -194,8 +241,9 @@ export default function PurchaseHistory() {
           }}>×</button>
         )}
       </div>
-
+        
       {/* 确认弹窗 */}
+      {detailItem && <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
       {confirm && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
@@ -422,7 +470,7 @@ export default function PurchaseHistory() {
                 {items.map(h => {
                   const displayItems = h.matchedItems || h.purchase_items || []
                   const isExpanded = expanded[h.id] || (search && h.matchedItems)
-                  const consumedCount = displayItems.filter(i => i.add_to_fridge && (i.consumed_quantity > 0 || i.is_fully_consumed)).length
+                  const consumedCount = displayItems.filter(i => i.is_fully_consumed).length
 
                   return (
                     <div key={h.id} style={{
@@ -473,24 +521,24 @@ export default function PurchaseHistory() {
                       {isExpanded && (
                         <div style={{ borderTop: '1px solid #f1f5f9' }}>
                           {displayItems.map(item => {
-                            const isConsumed = item.is_fully_consumed ||
-                              (item.consumed_quantity >= item.quantity && item.quantity > 0)
+                            const isConsumed = item.is_fully_consumed
                             return (
-                              <div key={item.id} style={{
+                              <div key={item.id} onClick={() => setDetailItem(item)} style={{
                                 padding: '10px 14px', borderBottom: '1px solid #f8fafc',
                                 display: 'flex', justifyContent: 'space-between',
                                 alignItems: 'center', gap: 8,
-                                opacity: isConsumed ? 0.6 : 1
+                                opacity: isConsumed ? 0.6 : 1,
+                                cursor: 'pointer'
                               }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontSize: 14, fontWeight: 500,
                                     color: item.category === '非食材' ? '#94a3b8' : '#1e293b' }}>
                                     {item.name_zh}
-                                    {item.add_to_fridge && (
+                                      {item.add_to_fridge && !isConsumed && (
                                       <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 6 }}>已入库</span>
                                     )}
                                     {isConsumed && (
-                                      <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>已消耗</span>
+                                      <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>已使用</span>
                                     )}
                                   </div>
                                   {item.name_original && (
@@ -520,15 +568,15 @@ export default function PurchaseHistory() {
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                                  <button onClick={() => setEditingItem({
+                                  <button onClick={e => { e.stopPropagation(); setEditingItem({
                                     historyId: h.id,
                                     item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' },
                                     original_name_zh: item.name_zh
-                                  })} style={{
+                                  }) }} style={{
                                     background: '#f1f5f9', color: '#475569', fontSize: 13,
                                     padding: '5px 10px', borderRadius: 7, fontWeight: 600
                                   }}>编辑</button>
-                                  <button onClick={() => confirmDeleteItem(h.id, item)} style={{
+                                  <button onClick={e => { e.stopPropagation(); confirmDeleteItem(h.id, item) }} style={{
                                     background: '#fef2f2', color: '#ef4444', fontSize: 13,
                                     padding: '5px 10px', borderRadius: 7, fontWeight: 600
                                   }}>删除</button>

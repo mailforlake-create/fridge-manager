@@ -33,16 +33,25 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     onUpdate({ ...item, quantity: newQty })
   }
 
-  async function consumeItem(all) {
-    const qty = all ? remaining : Number(consumeQty)
-    if (!qty || qty <= 0) return alert('请输入有效的消耗数量')
-    if (qty > remaining) return alert(`最多可消耗 ${remaining}${item.unit}`)
-    const newConsumed = (item.consumed_quantity || 0) + qty
-    await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
-    onUpdate({ ...item, consumed_quantity: newConsumed })
-    setConsuming(false)
-    setConsumeQty('')
+async function consumeItem(all) {
+  const qty = all ? remaining : Number(consumeQty)
+  if (!qty || qty <= 0) return alert('请输入有效的消耗数量')
+  if (qty > remaining) return alert(`最多可消耗 ${remaining}${item.unit}`)
+  const newConsumed = (item.consumed_quantity || 0) + qty
+  const isFullyConsumed = newConsumed >= (item.quantity || 0)
+
+  await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
+
+  if (isFullyConsumed) {
+    await supabase.from('purchase_items')
+      .update({ is_fully_consumed: true })
+      .eq('name_zh', item.name_zh)
   }
+
+  onUpdate({ ...item, consumed_quantity: newConsumed })
+  setConsuming(false)
+  setConsumeQty('')
+}
 
   async function saveEdit() {
     setSaving(true)
