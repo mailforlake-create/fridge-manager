@@ -32,7 +32,7 @@ export default function PurchaseHistory() {
     const { data } = await supabase
       .from('purchase_history')
       .select(`*, purchase_items(*)`)
-      .order('created_at', { ascending: false })
+      .order('purchased_at', { ascending: false, nullsFirst: false })
     setHistory(data || [])
     setLoading(false)
   }
@@ -142,28 +142,33 @@ export default function PurchaseHistory() {
     setEditingItem(null)
   }
 
+  // ── 过滤 + 按月分组 ───────────────────────────────────────
+
   const filteredHistory = history.map(h => {
-  if (!search) return { ...h, matchedItems: null }
-  const s = search.toLowerCase()
+    if (!search) return { ...h, matchedItems: null }
+    const s = search.toLowerCase()
+    const storeMatch =
+      h.store_name?.toLowerCase().includes(s) ||
+      h.store_name_original?.toLowerCase().includes(s) ||
+      h.purchased_at?.includes(s)
+    if (storeMatch) return { ...h, matchedItems: null }
+    const matchedItems = h.purchase_items?.filter(i =>
+      i.name_zh?.toLowerCase().includes(s) ||
+      i.name_original?.toLowerCase().includes(s) ||
+      i.memo?.toLowerCase().includes(s)
+    )
+    if (matchedItems?.length > 0) return { ...h, matchedItems }
+    return null
+  }).filter(Boolean)
 
-  // 商家名匹配：显示全部商品
-  const storeMatch =
-    h.store_name?.toLowerCase().includes(s) ||
-    h.store_name_original?.toLowerCase().includes(s) ||
-    h.purchased_at?.includes(s)
-
-  if (storeMatch) return { ...h, matchedItems: null }
-
-  // 商品名匹配：只显示匹配的商品
-  const matchedItems = h.purchase_items?.filter(i =>
-    i.name_zh?.toLowerCase().includes(s) ||
-    i.name_original?.toLowerCase().includes(s) ||
-    i.memo?.toLowerCase().includes(s)
-  )
-
-  if (matchedItems?.length > 0) return { ...h, matchedItems }
-  return null
-}).filter(Boolean)
+  const grouped = {}
+  filteredHistory.forEach(h => {
+    const dateStr = h.purchased_at || h.created_at
+    const d = dateStr ? new Date(dateStr) : new Date()
+    const key = `${d.getFullYear()}年${d.getMonth() + 1}月`
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(h)
+  })
 
   return (
     <div style={{ padding: 16 }}>
@@ -175,16 +180,13 @@ export default function PurchaseHistory() {
           position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
           fontSize: 16, color: '#94a3b8', pointerEvents: 'none'
         }}>🔍</span>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+        <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="搜索商家、商品名称..."
           style={{
             width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
             border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
             boxSizing: 'border-box'
-          }}
-        />
+          }} />
         {search && (
           <button onClick={() => setSearch('')} style={{
             position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
@@ -200,10 +202,7 @@ export default function PurchaseHistory() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: 24
         }}>
-          <div style={{
-            background: '#fff', borderRadius: 16, padding: 24,
-            width: '100%', maxWidth: 360
-          }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{confirm.title}</div>
             {confirm.message && (
               <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>{confirm.message}</div>
@@ -234,8 +233,7 @@ export default function PurchaseHistory() {
       {editingHistory && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 999
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999
         }}>
           <div style={{
             background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
@@ -282,8 +280,7 @@ export default function PurchaseHistory() {
       {editingItem && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 999
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999
         }}>
           <div style={{
             background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
@@ -353,8 +350,6 @@ export default function PurchaseHistory() {
                   onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, memo: e.target.value } }))}
                   placeholder="可选" />
               </div>
-
-              {/* 保质期区域 */}
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 10, marginTop: 4 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 8 }}>保质期信息</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -391,7 +386,6 @@ export default function PurchaseHistory() {
                 </div>
               </div>
             </div>
-
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={() => setEditingItem(null)} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10,
@@ -406,6 +400,7 @@ export default function PurchaseHistory() {
         </div>
       )}
 
+      {/* 主列表 */}
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
       ) : filteredHistory.length === 0 ? (
@@ -413,105 +408,140 @@ export default function PurchaseHistory() {
           {search ? '没有找到匹配的记录' : '暂无购物记录'}
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {filteredHistory.map(h => (
-            <div key={h.id} style={{
-              background: '#fff', borderRadius: 12, overflow: 'hidden',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-            }}>
-              <div style={{ padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
-                    style={{ flex: 1, cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>{h.store_name || '未知商家'}</div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                      {h.purchased_at || h.created_at?.split('T')[0]}{search && h.matchedItems && (
-                        <span style={{ color: '#16a34a', marginLeft: 6 }}>
-                          {h.matchedItems.length} 件匹配
-                        </span>
-                      )}
-                      　{h.purchase_items?.length || 0} 件商品
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    {h.total_amount && (
-                      <div style={{ fontWeight: 700, color: '#16a34a' }}>¥{h.total_amount}</div>
-                    )}
-                    <button onClick={() => setEditingHistory({ ...h })} style={{
-                      background: '#f1f5f9', color: '#475569', fontSize: 13,
-                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                    }}>编辑</button>
-                    <button onClick={() => confirmDeleteHistory(h)} style={{
-                      background: '#fef2f2', color: '#ef4444', fontSize: 13,
-                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                    }}>删除</button>
-                    <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
-                      style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
-                      {expanded[h.id] ? '▲' : '▼'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {Object.entries(grouped).map(([month, items]) => (
+            <div key={month}>
+              {/* 月份分组标题 */}
+              <div style={{
+                fontSize: 13, fontWeight: 700, color: '#475569',
+                marginBottom: 8, paddingBottom: 6,
+                borderBottom: '1.5px solid #f1f5f9'
+              }}>{month}　{items.length} 张小票</div>
 
-              {(expanded[h.id] || (search && h.matchedItems)) && (
-                <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                  {(h.matchedItems || h.purchase_items)?.map(item => (
-                    <div key={item.id} style={{
-                      padding: '10px 14px', borderBottom: '1px solid #f8fafc',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {items.map(h => {
+                  const displayItems = h.matchedItems || h.purchase_items || []
+                  const isExpanded = expanded[h.id] || (search && h.matchedItems)
+                  const consumedCount = displayItems.filter(i => i.add_to_fridge && (i.consumed_quantity > 0 || i.is_fully_consumed)).length
+
+                  return (
+                    <div key={h.id} style={{
+                      background: '#fff', borderRadius: 12, overflow: 'hidden',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                     }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500,
-                          color: item.category === '非食材' ? '#94a3b8' : '#1e293b' }}>
-                          {item.name_zh}
-                          {item.add_to_fridge && (
-                            <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 6 }}>已入库</span>
-                          )}
-                        </div>
-                        {item.name_original && (
-                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
-                        )}
-                        {item.discount_info && (
-                          <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
-                        )}
-                        {item.memo && (
-                          <div style={{ fontSize: 11, color: '#64748b' }}>备注：{item.memo}</div>
-                        )}
-                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                          {item.quantity}{item.unit}
-                          {item.price && (
-                            <span style={{ marginLeft: 6, color: item.is_discount ? '#ef4444' : '#475569', fontWeight: 600 }}>
-                              ¥{item.price}
-                              {item.is_discount && item.original_price && (
-                                <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: 11, marginLeft: 4 }}>
-                                  ¥{item.original_price}
+                      {/* 履历头部 */}
+                      <div style={{ padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
+                            style={{ flex: 1, cursor: 'pointer' }}>
+                            <div style={{ fontWeight: 600, fontSize: 15 }}>{h.store_name || '未知商家'}</div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                              {h.purchased_at || h.created_at?.split('T')[0]}，{displayItems.length} 件商品
+                              {search && h.matchedItems && (
+                                <span style={{ color: '#16a34a', marginLeft: 6 }}>
+                                  {h.matchedItems.length} 件匹配
                                 </span>
                               )}
-                            </span>
-                          )}
-                          {item.expiry_date && (
-                            <span style={{ marginLeft: 6, color: '#94a3b8' }}>到期 {item.expiry_date}</span>
-                          )}
+                            </div>
+                            {consumedCount > 0 && (
+                              <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>
+                                {consumedCount} 件已消耗
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            {h.total_amount && (
+                              <div style={{ fontWeight: 700, color: '#16a34a' }}>¥{h.total_amount}</div>
+                            )}
+                            <button onClick={() => setEditingHistory({ ...h })} style={{
+                              background: '#f1f5f9', color: '#475569', fontSize: 13,
+                              padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                            }}>编辑</button>
+                            <button onClick={() => confirmDeleteHistory(h)} style={{
+                              background: '#fef2f2', color: '#ef4444', fontSize: 13,
+                              padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                            }}>删除</button>
+                            <div onClick={() => setExpanded(e => ({ ...e, [h.id]: !e[h.id] }))}
+                              style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
+                              {isExpanded ? '▲' : '▼'}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                        <button onClick={() => setEditingItem({
-                          historyId: h.id,
-                          item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' },
-                          original_name_zh: item.name_zh
-                        })} style={{
-                          background: '#f1f5f9', color: '#475569', fontSize: 13,
-                          padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                        }}>编辑</button>
-                        <button onClick={() => confirmDeleteItem(h.id, item)} style={{
-                          background: '#fef2f2', color: '#ef4444', fontSize: 13,
-                          padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                        }}>删除</button>
-                      </div>
+
+                      {/* 商品列表 */}
+                      {isExpanded && (
+                        <div style={{ borderTop: '1px solid #f1f5f9' }}>
+                          {displayItems.map(item => {
+                            const isConsumed = item.is_fully_consumed ||
+                              (item.consumed_quantity >= item.quantity && item.quantity > 0)
+                            return (
+                              <div key={item.id} style={{
+                                padding: '10px 14px', borderBottom: '1px solid #f8fafc',
+                                display: 'flex', justifyContent: 'space-between',
+                                alignItems: 'center', gap: 8,
+                                opacity: isConsumed ? 0.6 : 1
+                              }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 500,
+                                    color: item.category === '非食材' ? '#94a3b8' : '#1e293b' }}>
+                                    {item.name_zh}
+                                    {item.add_to_fridge && (
+                                      <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 6 }}>已入库</span>
+                                    )}
+                                    {isConsumed && (
+                                      <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>已消耗</span>
+                                    )}
+                                  </div>
+                                  {item.name_original && (
+                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
+                                  )}
+                                  {item.discount_info && (
+                                    <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
+                                  )}
+                                  {item.memo && (
+                                    <div style={{ fontSize: 11, color: '#64748b' }}>备注：{item.memo}</div>
+                                  )}
+                                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                                    {item.quantity}{item.unit}
+                                    {item.price && (
+                                      <span style={{ marginLeft: 6, color: item.is_discount ? '#ef4444' : '#475569', fontWeight: 600 }}>
+                                        ¥{item.price}
+                                        {item.is_discount && item.original_price && (
+                                          <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: 11, marginLeft: 4 }}>
+                                            ¥{item.original_price}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                    {item.expiry_date && (
+                                      <span style={{ marginLeft: 6, color: '#94a3b8' }}>到期 {item.expiry_date}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                                  <button onClick={() => setEditingItem({
+                                    historyId: h.id,
+                                    item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' },
+                                    original_name_zh: item.name_zh
+                                  })} style={{
+                                    background: '#f1f5f9', color: '#475569', fontSize: 13,
+                                    padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                                  }}>编辑</button>
+                                  <button onClick={() => confirmDeleteItem(h.id, item)} style={{
+                                    background: '#fef2f2', color: '#ef4444', fontSize: 13,
+                                    padding: '5px 10px', borderRadius: 7, fontWeight: 600
+                                  }}>删除</button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                })}
+              </div>
             </div>
           ))}
         </div>

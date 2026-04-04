@@ -18,13 +18,13 @@ export default function Layout() {
       <Outlet />
       <nav style={navStyle}>
         <NavLink to="/fridge" style={linkStyle}>
-          <span style={{ fontSize: 22 }}>🧊</span>冰箱
-        </NavLink>
-        <NavLink to="/add" style={linkStyle}>
-          <span style={{ fontSize: 22 }}>➕</span>添加
+          <span style={{ fontSize: 22 }}>📦</span>物品
         </NavLink>
         <NavLink to="/history" style={linkStyle}>
           <span style={{ fontSize: 22 }}>🧾</span>履历
+        </NavLink>
+        <NavLink to="/add" style={linkStyle}>
+          <span style={{ fontSize: 22 }}>➕</span>添加
         </NavLink>
       </nav>
     </div>
