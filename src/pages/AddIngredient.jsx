@@ -85,7 +85,13 @@ async function recognizeReceipt(file) {
     {"name_original": "原文商品名", "price": 价格数字或null, "original_price": 原价或null, "is_discount": true/false, "discount_info": "折扣说明或空字符串", "quantity": 数量数字}
   ]
 }
-只输出JSON。` }
+
+重要规则：
+1. 折扣行（如「割引」「値引」「ポイント」「クーポン」等）不要作为单独商品，而是合并到上一行商品的 discount_info 字段，并设 is_discount=true，original_price=原价，price=折后价
+2. 积分、返点、袋子费等非商品行，category设为"非食材"
+3. 合计、小计、税等汇总行不要包含在items中
+
+只输出JSON。`}
     ]
   }])
 
