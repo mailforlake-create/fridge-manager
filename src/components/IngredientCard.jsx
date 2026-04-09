@@ -42,7 +42,12 @@ async function consumeItem(all) {
 
   await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
 
-  if (isFullyConsumed) {
+  if (item.purchase_item_id) {
+    await supabase.from('purchase_items').update({
+      consumed_quantity: newConsumed,
+      is_fully_consumed: isFullyConsumed
+    }).eq('id', item.purchase_item_id)
+  } else if (isFullyConsumed) {
     await supabase.from('purchase_items')
       .update({ is_fully_consumed: true })
       .eq('name_zh', item.name_zh)
@@ -53,18 +58,32 @@ async function consumeItem(all) {
   setConsumeQty('')
 }
 
-  async function saveEdit() {
-    setSaving(true)
-    const updates = {
-      ...form,
-      quantity: Number(form.quantity) || 1,
-      expiry_date: form.expiry_date || null
-    }
-    await supabase.from('ingredients').update(updates).eq('id', item.id)
-    onUpdate({ ...item, ...updates })
-    setSaving(false)
-    setEditing(false)
+async function saveEdit() {
+  setSaving(true)
+  const updates = {
+    ...form,
+    quantity: Number(form.quantity) || 1,
+    expiry_date: form.expiry_date || null
   }
+  await supabase.from('ingredients').update(updates).eq('id', item.id)
+
+  // 同步更新 purchase_items
+  if (item.purchase_item_id) {
+    await supabase.from('purchase_items').update({
+      name_zh: form.name_zh,
+      category: form.category,
+      quantity: Number(form.quantity) || 1,
+      unit: form.unit,
+      expiry_date: form.expiry_date || null,
+      memo: form.memo || null,
+      location: form.location,
+    }).eq('id', item.purchase_item_id)
+  }
+
+  onUpdate({ ...item, ...updates })
+  setSaving(false)
+  setEditing(false)
+}
 
   const field = {
     width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 14,
@@ -134,9 +153,28 @@ async function consumeItem(all) {
             <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{item.name_original}</div>
           )}
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-            {item.category || '未分类'}
-            {item.memo && ` · ${item.memo}`}
-          </div>
+              {item.category || '未分类'}
+              {item.memo && ` · ${item.memo}`}
+            </div>
+            {item.purchase_item?.price && (
+              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                {item.purchase_item.is_discount ? (
+                  <>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>¥{item.purchase_item.price}</span>
+                    {item.purchase_item.original_price && (
+                      <span style={{ textDecoration: 'line-through', marginLeft: 4 }}>
+                        ¥{item.purchase_item.original_price}
+                      </span>
+                    )}
+                    {item.purchase_item.discount_info && (
+                      <span style={{ color: '#ef4444', marginLeft: 4 }}>{item.purchase_item.discount_info}</span>
+                    )}
+                  </>
+                ) : (
+                  <span>¥{item.purchase_item.price}</span>
+                )}
+              </div>
+            )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {daysLeft !== null && (

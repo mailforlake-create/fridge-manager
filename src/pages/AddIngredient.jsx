@@ -298,20 +298,26 @@ export default function AddIngredient() {
     setLoading(false)
   }
 
-  async function mergeOrInsert(item) {
-    const { data: existing } = await supabase
-      .from('ingredients')
-      .select('id, quantity')
-      .eq('name_zh', item.name_zh)
-      .maybeSingle()
-    if (existing) {
-      await supabase.from('ingredients')
-        .update({ quantity: (existing.quantity || 0) + (item.quantity || 1) })
-        .eq('id', existing.id)
-    } else {
-      await supabase.from('ingredients').insert(item)
-    }
+  async function mergeOrInsert(item, purchaseItemId = null) {
+  const { data: existing } = await supabase
+    .from('ingredients')
+    .select('id, quantity')
+    .eq('name_zh', item.name_zh)
+    .maybeSingle()
+  if (existing) {
+    await supabase.from('ingredients')
+      .update({
+        quantity: (existing.quantity || 0) + (item.quantity || 1),
+        ...(purchaseItemId ? { purchase_item_id: purchaseItemId } : {})
+      })
+      .eq('id', existing.id)
+  } else {
+    await supabase.from('ingredients').insert({
+      ...item,
+      purchase_item_id: purchaseItemId
+    })
   }
+}
 
   async function saveAiItems() {
     // 移除「至少选一件」的限制
@@ -360,8 +366,17 @@ export default function AddIngredient() {
         location: 'fridge'
       }))
 
+    // 建立 name_zh → purchase_item id 的映射
+    const { data: savedItems } = await supabase
+      .from('purchase_items')
+      .select('id, name_zh')
+      .eq('history_id', history.id)
+
+    const itemIdMap = {}
+    savedItems?.forEach(i => { itemIdMap[i.name_zh] = i.id })
+
     for (const item of fridgeItems) {
-      await mergeOrInsert(item)
+      await mergeOrInsert(item, itemIdMap[item.name_zh] || null)
     }
 
     setSaving(false)

@@ -11,14 +11,23 @@ export default function Fridge() {
   useEffect(() => { fetchItems() }, [])
 
   async function fetchItems() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('ingredients')
-      .select('*')
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-    setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
-    setLoading(false)
-  }
+  setLoading(true)
+  const { data } = await supabase
+    .from('ingredients')
+    .select(`
+      *,
+      purchase_item:purchase_item_id (
+        price,
+        original_price,
+        is_discount,
+        discount_info,
+        history_id
+      )
+    `)
+    .order('expiry_date', { ascending: true, nullsFirst: false })
+  setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
+  setLoading(false)
+}
 
   async function deleteItem(id) {
     await supabase.from('ingredients').delete().eq('id', id)
