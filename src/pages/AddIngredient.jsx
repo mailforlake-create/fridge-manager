@@ -228,6 +228,172 @@ function ItemDetailModal({ item, onClose }) {
   )
 }
 
+function AiResultList({
+  aiItems, setAiItems, selected, setSelected,
+  receiptData, setReceiptData, saving,
+  saveAiItems, setItemField, UNITS, CATEGORIES, smallField
+}) {
+  if (!aiItems.length) return null
+  const allSelected = aiItems.every((_, i) => aiItems[i].category === '非食材' || selected[i])
+  const noneSelected = aiItems.every((_, i) => aiItems[i].category === '非食材' || !selected[i])
+
+  function ExpirySection({ mfgDate, shelfDays, expiryDate, onMfg, onShelf, onExpiry }) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>生产日期</div>
+            <input style={smallField} type="date" value={mfgDate} onChange={e => onMfg(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>保质期(天)</div>
+            <input style={smallField} type="number" placeholder="如：180" value={shelfDays}
+              onChange={e => onShelf(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>过期日期</div>
+          <input style={smallField} type="date" value={expiryDate} onChange={e => onExpiry(e.target.value)} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      {receiptData && (
+        <div style={{
+          background: '#f0fdf4', borderRadius: 10, padding: '10px 14px',
+          marginBottom: 12, fontSize: 13
+        }}>
+          <div style={{ fontWeight: 600, color: '#16a34a' }}>{receiptData.store_name || '未知商家'}</div>
+          <div style={{ color: '#64748b', marginTop: 2 }}>
+            {receiptData.purchased_at && `购买日期：${receiptData.purchased_at}　`}
+            {receiptData.total_amount && `合计：¥${receiptData.total_amount}`}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
+          识别到 {aiItems.length} 件，勾选存入物品：
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => {
+            const sel = {}
+            aiItems.forEach((_, i) => { sel[i] = true })
+            setSelected(sel)
+          }} style={{
+            padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+            background: allSelected ? '#16a34a' : '#f1f5f9',
+            color: allSelected ? '#fff' : '#475569'
+          }}>全选</button>
+          <button onClick={() => setSelected({})} style={{
+            padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+            background: noneSelected ? '#475569' : '#f1f5f9',
+            color: noneSelected ? '#fff' : '#475569'
+          }}>全不选</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {aiItems.map((item, i) => (
+          <div key={i} style={{
+            background: selected[i] ? '#f0fdf4' : '#f8fafc',
+            border: `1.5px solid ${selected[i] ? '#16a34a' : '#e2e8f0'}`,
+            borderRadius: 12, padding: '10px 12px'
+          }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))}
+                style={{
+                  width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 2, cursor: 'pointer',
+                  border: `2px solid ${selected[i] ? '#16a34a' : '#cbd5e1'}`,
+                  background: selected[i] ? '#16a34a' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                {selected[i] && <span style={{ color: '#fff', fontSize: 13 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    style={{ ...smallField, flex: 2 }}
+                    value={item.name_zh}
+                    onChange={e => setItemField(i, 'name_zh', e.target.value)}
+                  />
+                  <input
+                    style={{ ...smallField, flex: 1 }}
+                    type="number"
+                    value={item.quantity}
+                    onChange={e => setItemField(i, 'quantity', e.target.value)}
+                  />
+                  <select
+                    style={{ ...smallField, flex: 1 }}
+                    value={item.unit}
+                    onChange={e => setItemField(i, 'unit', e.target.value)}
+                  >
+                    {UNITS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <select
+                    style={{ ...smallField, flex: 1 }}
+                    value={item.category || ''}
+                    onChange={e => setItemField(i, 'category', e.target.value)}
+                  >
+                    <option value="">分类</option>
+                    {[...CATEGORIES, '非食材'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  {item.price && (
+                    <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {item.is_discount && <span style={{ color: '#ef4444', fontWeight: 600 }}>折扣</span>}
+                      <span>¥{item.price}</span>
+                      {item.original_price && item.is_discount && (
+                        <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>¥{item.original_price}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {item.name_original && (
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
+                )}
+                {item.discount_info && (
+                  <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
+                )}
+                <input
+                  style={smallField}
+                  value={item.memo || ''}
+                  placeholder="备注（可选）"
+                  onChange={e => setItemField(i, 'memo', e.target.value)}
+                />
+                <ExpirySection
+                  mfgDate={item.mfg_date || ''}
+                  shelfDays={item.shelf_days || ''}
+                  expiryDate={item.expiry_date || ''}
+                  onMfg={v => setItemField(i, 'mfg_date', v)}
+                  onShelf={v => setItemField(i, 'shelf_days', v)}
+                  onExpiry={v => setItemField(i, 'expiry_date', v)}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <button onClick={() => { setAiItems([]); setSelected({}); setReceiptData(null) }}
+          style={{
+            flex: 1, padding: '12px 0', borderRadius: 12,
+            background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
+          }}>重新识别</button>
+        <button onClick={saveAiItems} disabled={saving} style={{
+          flex: 2, padding: '12px 0', borderRadius: 12,
+          background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700
+        }}>{saving ? '保存中...' : receiptData ? '保存小票' : '保存选中项'}</button>
+      </div>
+    </div>
+  )
+}
+
 export default function AddIngredient() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('receipt')
@@ -456,153 +622,6 @@ export default function AddIngredient() {
     )
   }
 
-  // AI 识别结果列表 — 用稳定 key 修复光标消失问题
-  function AiResultList() {
-    if (!aiItems.length) return null
-    const allSelected = aiItems.every((item, i) => item.category === '非食材' || selected[i])
-    const noneSelected = aiItems.every((item, i) => item.category === '非食材' || !selected[i])
-
-    return (
-      <div style={{ marginTop: 16 }}>
-        {receiptData && (
-          <div style={{
-            background: '#f0fdf4', borderRadius: 10, padding: '10px 14px',
-            marginBottom: 12, fontSize: 13
-          }}>
-            <div style={{ fontWeight: 600, color: '#16a34a' }}>
-              {receiptData.store_name || '未知商家'}
-            </div>
-            <div style={{ color: '#64748b', marginTop: 2 }}>
-              {receiptData.purchased_at && `购买日期：${receiptData.purchased_at}　`}
-              {receiptData.total_amount && `合计：¥${receiptData.total_amount}`}
-            </div>
-          </div>
-        )}
-
-        {/* 全选/全不选 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
-            识别到 {aiItems.length} 件，勾选存入物品：
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => {
-              const sel = {}
-              aiItems.forEach((_, i) => { sel[i] = true })
-              setSelected(sel)
-            }} style={{
-              padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
-              background: allSelected ? '#16a34a' : '#f1f5f9',
-              color: allSelected ? '#fff' : '#475569'
-            }}>全选</button>
-            <button onClick={() => setSelected({})} style={{
-              padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600,
-              background: noneSelected ? '#475569' : '#f1f5f9',
-              color: noneSelected ? '#fff' : '#475569'
-            }}>全不选</button>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {aiItems.map((item, i) => (
-            <div key={i} style={{
-              background: selected[i] ? '#f0fdf4' : '#f8fafc',
-              border: `1.5px solid ${selected[i] ? '#16a34a' : '#e2e8f0'}`,
-              borderRadius: 12, padding: '10px 12px'
-            }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <div onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))}
-                  style={{
-                    width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 2, cursor: 'pointer',
-                    border: `2px solid ${selected[i] ? '#16a34a' : '#cbd5e1'}`,
-                    background: selected[i] ? '#16a34a' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                  {selected[i] && <span style={{ color: '#fff', fontSize: 13 }}>✓</span>}
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {/* 名称 — 独立 input，不在子组件里，避免重渲染导致光标丢失 */}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      style={{ ...smallField, flex: 2 }}
-                      value={item.name_zh}
-                      onChange={e => setItemField(i, 'name_zh', e.target.value)}
-                    />
-                    <input
-                      style={{ ...smallField, flex: 1 }}
-                      type="number"
-                      value={item.quantity}
-                      onChange={e => setItemField(i, 'quantity', e.target.value)}
-                    />
-                    <select
-                      style={{ ...smallField, flex: 1 }}
-                      value={item.unit}
-                      onChange={e => setItemField(i, 'unit', e.target.value)}
-                    >
-                      {UNITS.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <select
-                      style={{ ...smallField, flex: 1 }}
-                      value={item.category || ''}
-                      onChange={e => setItemField(i, 'category', e.target.value)}
-                    >
-                      <option value="">分类</option>
-                      {[...CATEGORIES, '非食材'].map(c => <option key={c}>{c}</option>)}
-                    </select>
-                    {receiptData && item.price && (
-                      <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {item.is_discount && <span style={{ color: '#ef4444', fontWeight: 600 }}>折扣</span>}
-                        <span>¥{item.price}</span>
-                        {item.original_price && item.is_discount && (
-                          <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>¥{item.original_price}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {item.name_original && (
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
-                  )}
-                  {item.discount_info && (
-                    <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>
-                  )}
-                  {/* 备注 */}
-                  <input
-                    style={{ ...smallField }}
-                    value={item.memo || ''}
-                    placeholder="备注（可选）"
-                    onChange={e => setItemField(i, 'memo', e.target.value)}
-                  />
-                  {/* 保质期 */}
-                  <ExpirySection
-                    small
-                    mfgDate={item.mfg_date || ''}
-                    shelfDays={item.shelf_days || ''}
-                    expiryDate={item.expiry_date || ''}
-                    onMfg={v => setItemField(i, 'mfg_date', v)}
-                    onShelf={v => setItemField(i, 'shelf_days', v)}
-                    onExpiry={v => setItemField(i, 'expiry_date', v)}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <button onClick={() => { setAiItems([]); setSelected({}); setReceiptData(null) }}
-            style={{
-              flex: 1, padding: '12px 0', borderRadius: 12,
-              background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
-            }}>重新识别</button>
-          <button onClick={saveAiItems} disabled={saving} style={{
-            flex: 2, padding: '12px 0', borderRadius: 12,
-            background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700
-          }}>{saving ? '保存中...' : receiptData ? '保存小票' : '保存选中项'}</button>
-        </div>
-      </div>
-    )
-  }
 
   function BarcodeTab() {
     const [code, setCode] = useState('')
@@ -750,7 +769,20 @@ export default function AddIngredient() {
                   </button>
                 </div>
               )}
-              <AiResultList />
+              <AiResultList
+                aiItems={aiItems}
+                setAiItems={setAiItems}
+                selected={selected}
+                setSelected={setSelected}
+                receiptData={receiptData}
+                setReceiptData={setReceiptData}
+                saving={saving}
+                saveAiItems={saveAiItems}
+                setItemField={setItemField}
+                UNITS={UNITS}
+                CATEGORIES={CATEGORIES}
+                smallField={smallField}
+              />
             </div>
           )}
 
@@ -773,7 +805,20 @@ export default function AddIngredient() {
                   </button>
                 </div>
               )}
-              <AiResultList />
+              <AiResultList
+                aiItems={aiItems}
+                setAiItems={setAiItems}
+                selected={selected}
+                setSelected={setSelected}
+                receiptData={receiptData}
+                setReceiptData={setReceiptData}
+                saving={saving}
+                saveAiItems={saveAiItems}
+                setItemField={setItemField}
+                UNITS={UNITS}
+                CATEGORIES={CATEGORIES}
+                smallField={smallField}
+              />
             </div>
           )}
 

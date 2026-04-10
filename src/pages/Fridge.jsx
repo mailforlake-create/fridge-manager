@@ -21,7 +21,12 @@ export default function Fridge() {
         original_price,
         is_discount,
         discount_info,
-        history_id
+        history_id,
+        created_at,
+        purchase_history:history_id (
+          store_name,
+          purchased_at
+        )
       )
     `)
     .order('expiry_date', { ascending: true, nullsFirst: false })
@@ -56,7 +61,14 @@ export default function Fridge() {
 
   return (
     <div style={{ padding: '16px 16px 0' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>🧊 我的物品</h1>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>📦 我的物品</h1>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+          {filter === 'all' && !search
+            ? `共 ${items.length} 件`
+            : `${filtered.length} / ${items.length} 件`}
+        </span>
+      </div>
 
       {/* 搜索框 */}
       <div style={{ position: 'relative', marginBottom: 12 }}>

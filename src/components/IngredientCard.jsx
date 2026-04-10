@@ -175,6 +175,19 @@ async function saveEdit() {
                 )}
               </div>
             )}
+            {(item.purchase_item?.purchase_history?.store_name || item.created_at) && (
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8 }}>
+                {item.purchase_item?.purchase_history?.store_name && (
+                  <span>🏪 {item.purchase_item.purchase_history.store_name}</span>
+                )}
+                {(item.purchase_item?.purchase_history?.purchased_at || item.created_at) && (
+                  <span>
+                    📅 {item.purchase_item?.purchase_history?.purchased_at ||
+                      item.created_at?.split('T')[0]}
+                  </span>
+                )}
+              </div>
+            )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {daysLeft !== null && (
