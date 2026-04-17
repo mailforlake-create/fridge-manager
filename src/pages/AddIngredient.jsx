@@ -467,14 +467,18 @@ export default function AddIngredient() {
   async function mergeOrInsert(item, purchaseItemId = null) {
   const { data: existing } = await supabase
     .from('ingredients')
-    .select('id, quantity')
+    .select('id, quantity, memo')
     .eq('name_zh', item.name_zh)
     .maybeSingle()
+
   if (existing) {
     await supabase.from('ingredients')
       .update({
         quantity: (existing.quantity || 0) + (item.quantity || 1),
-        ...(purchaseItemId ? { purchase_item_id: purchaseItemId } : {})
+        // 更新为最新入库的 purchase_item_id（更新入库日期和商家）
+        ...(purchaseItemId ? { purchase_item_id: purchaseItemId } : {}),
+        // 有新备注用新的，否则保留原备注
+        memo: item.memo || existing.memo || null,
       })
       .eq('id', existing.id)
   } else {

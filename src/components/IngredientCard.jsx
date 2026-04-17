@@ -190,13 +190,19 @@ async function saveEdit() {
             )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          {daysLeft !== null && (
-            <span style={{
-              fontSize: 12, fontWeight: 600, color: statusColor,
-              background: statusColor + '18', padding: '2px 8px', borderRadius: 99
-            }}>
-              {daysLeft <= 0 ? '已过期' : `${daysLeft}天`}
-            </span>
+          {item.expiry_date && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                到期 {item.expiry_date}
+              </div>
+              <span style={{
+                fontSize: 12, fontWeight: 600, color: statusColor,
+                background: statusColor + '18', padding: '2px 6px', borderRadius: 99,
+                marginTop: 2, display: 'inline-block'
+              }}>
+                {daysLeft <= 0 ? '已过期' : `还剩 ${daysLeft} 天`}
+              </span>
+            </div>
           )}
           <button onClick={() => onDelete(item.id)} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
