@@ -31,6 +31,7 @@ export default function Fridge() {
     `)
     .order('expiry_date', { ascending: true, nullsFirst: false })
   setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
+  console.log('物品数据样本：', JSON.stringify(data?.[0]))
   setLoading(false)
 }
 

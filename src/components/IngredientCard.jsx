@@ -156,25 +156,28 @@ async function saveEdit() {
               {item.category || '未分类'}
               {item.memo && ` · ${item.memo}`}
             </div>
-            {item.purchase_item?.price && (
+            {item.purchase_item && (
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                {item.purchase_item.is_discount ? (
-                  <>
-                    <span style={{ color: '#ef4444', fontWeight: 600 }}>¥{item.purchase_item.price}</span>
-                    {item.purchase_item.original_price && (
-                      <span style={{ textDecoration: 'line-through', marginLeft: 4 }}>
-                        ¥{item.purchase_item.original_price}
-                      </span>
-                    )}
-                    {item.purchase_item.discount_info && (
-                      <span style={{ color: '#ef4444', marginLeft: 4 }}>{item.purchase_item.discount_info}</span>
-                    )}
-                  </>
-                ) : (
-                  <span>¥{item.purchase_item.price}</span>
-                )}
+                {item.purchase_item.price ? (
+                  item.purchase_item.is_discount ? (
+                    <span>
+                      <span style={{ color: '#ef4444', fontWeight: 600 }}>¥{item.purchase_item.price}</span>
+                      {item.purchase_item.original_price && (
+                        <span style={{ textDecoration: 'line-through', marginLeft: 4 }}>
+                          ¥{item.purchase_item.original_price}
+                        </span>
+                      )}
+                      {item.purchase_item.discount_info && (
+                        <span style={{ color: '#ef4444', marginLeft: 4 }}>{item.purchase_item.discount_info}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span>¥{item.purchase_item.price}</span>
+                  )
+                ) : null}
               </div>
             )}
+
             {(item.purchase_item?.purchase_history?.store_name || item.created_at) && (
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8 }}>
                 {item.purchase_item?.purchase_history?.store_name && (
