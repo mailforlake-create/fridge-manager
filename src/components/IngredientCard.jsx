@@ -42,15 +42,20 @@ async function consumeItem(all) {
 
   await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
 
+  // 优先用 purchase_item_id 精准更新，避免更新到错误的记录
   if (item.purchase_item_id) {
     await supabase.from('purchase_items').update({
       consumed_quantity: newConsumed,
       is_fully_consumed: isFullyConsumed
     }).eq('id', item.purchase_item_id)
   } else if (isFullyConsumed) {
+    // 没有关联时用 name_zh 匹配最新一条
     await supabase.from('purchase_items')
       .update({ is_fully_consumed: true })
       .eq('name_zh', item.name_zh)
+      .eq('add_to_fridge', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
   }
 
   onUpdate({ ...item, consumed_quantity: newConsumed })
