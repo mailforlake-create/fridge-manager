@@ -464,29 +464,11 @@ export default function AddIngredient() {
     setLoading(false)
   }
 
-  async function mergeOrInsert(item, purchaseItemId = null) {
-  const { data: existing } = await supabase
-    .from('ingredients')
-    .select('id, quantity, memo')
-    .eq('name_zh', item.name_zh)
-    .maybeSingle()
-
-  if (existing) {
-    await supabase.from('ingredients')
-      .update({
-        quantity: (existing.quantity || 0) + (item.quantity || 1),
-        // 更新为最新入库的 purchase_item_id（更新入库日期和商家）
-        ...(purchaseItemId ? { purchase_item_id: purchaseItemId } : {}),
-        // 有新备注用新的，否则保留原备注
-        memo: item.memo || existing.memo || null,
-      })
-      .eq('id', existing.id)
-  } else {
-    await supabase.from('ingredients').insert({
-      ...item,
-      purchase_item_id: purchaseItemId
-    })
-  }
+ async function insertIngredient(item, purchaseItemId = null) {
+  await supabase.from('ingredients').insert({
+    ...item,
+    purchase_item_id: purchaseItemId
+  })
 }
 
   async function saveAiItems() {
@@ -546,7 +528,7 @@ export default function AddIngredient() {
     savedItems?.forEach(i => { itemIdMap[i.name_zh] = i.id })
 
     for (const item of fridgeItems) {
-      await mergeOrInsert(item, itemIdMap[item.name_zh] || null)
+      await insertIngredient(item, itemIdMap[item.name_zh] || null)
     }
 
     setSaving(false)
@@ -566,7 +548,7 @@ export default function AddIngredient() {
       location: form.location,
       memo: form.memo || null
     }
-    await mergeOrInsert(item)
+    await insertIngredient(item)
     setSaving(false)
     navigate('/fridge')
   }
