@@ -75,6 +75,7 @@ function AddDiningModal({ onClose, onSaved }) {
   const [outItems, setOutItems] = useState([])
   const [outPhotos, setOutPhotos] = useState([])
   const [billData, setBillData] = useState(null)
+  const [dinedTime, setDinedTime] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -121,24 +122,26 @@ function AddDiningModal({ onClose, onSaved }) {
         parts.push({ type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } })
       }
       parts.push({ type: 'text', text: `识别这张餐饮账单（支持中日英文），输出JSON：
-{
-  "store_name": "店名中文",
-  "store_name_original": "店名原文",
-  "dined_at": "就餐日期YYYY-MM-DD或空字符串",
-  "amount": 合计金额数字或null,
-  "items": [{"name_zh":"菜品中文名","name_original":"原文","quantity":1,"unit":"份"}]
-}
-只输出JSON。` })
+      {
+        "store_name": "店名中文",
+        "store_name_original": "店名原文",
+        "dined_at": "就餐日期YYYY-MM-DD或空字符串",
+        "dined_time": "就餐时间HH:MM或空字符串",
+        "amount": 合计金额数字或null,
+        "items": [{"name_zh":"菜品中文名","name_original":"原文","quantity":1,"unit":"份","price":单价数字或null}]
+      }
+      只输出JSON。` })
       const text = await callAI([{ role: 'user', content: parts }])
       const result = parseJSON(text)
       if (result) {
-        setBillData(result)
-        setStoreName(result.store_name || '')
-        setStoreNameOriginal(result.store_name_original || '')
-        if (result.dined_at) setDinedAt(result.dined_at)
-        if (result.amount) setAmount(String(result.amount))
-        setOutItems(result.items || [])
-      }
+      setBillData(result)
+      setStoreName(result.store_name || '')
+      setStoreNameOriginal(result.store_name_original || '')
+      if (result.dined_at) setDinedAt(result.dined_at)
+      if (result.dined_time) setDinedTime(result.dined_time)
+      if (result.amount) setAmount(String(result.amount))
+      setOutItems(result.items || [])
+    }
     } catch (e) { alert('识别失败：' + e.message) }
     setLoading(false)
   }
@@ -180,8 +183,9 @@ function AddDiningModal({ onClose, onSaved }) {
 
     const { data: dining } = await supabase.from('dining_history').insert({
       dining_type: diningType,
-      meal_time: mealTime,
+      meal_time: mealTime || null,
       dined_at: dinedAt,
+      dined_time: diningType === 'out' ? (dinedTime || null) : null,
       store_name: diningType === 'out' ? storeName : null,
       store_name_original: diningType === 'out' ? storeNameOriginal : null,
       amount: diningType === 'out' && amount ? Number(amount) : null,
@@ -216,6 +220,7 @@ function AddDiningModal({ onClose, onSaved }) {
             category: item.category || null,
             quantity: Number(item.quantity) || 1,
             unit: item.unit || '人份',
+            price: item.price ? Number(item.price) : null,
             ingredient_id: item.ingredient_id || null
           }))
         )
@@ -227,13 +232,15 @@ function AddDiningModal({ onClose, onSaved }) {
     onClose()
   }
 
-  const canSave = diningType && mealTime && (
-    diningType === 'home' ? (
-      homeMode === 'manual' ? homeItems.some(i => i.name_zh.trim()) :
-      homeMode === 'select' ? Object.values(selectedIngredients).some(Boolean) :
-      homeMode === 'photo' ? aiHomeItems.length > 0 : false
-    ) : (storeName.trim() && dinedAt && amount)
-  )
+  const canSave = diningType && (
+  diningType === 'home'
+    ? mealTime && (
+        homeMode === 'manual' ? homeItems.some(i => i.name_zh.trim()) :
+        homeMode === 'select' ? Object.values(selectedIngredients).some(Boolean) :
+        homeMode === 'photo' ? aiHomeItems.length > 0 : false
+      )
+    : (storeName.trim() && dinedAt && amount)
+)
 
   return (
     <div style={{
@@ -257,10 +264,12 @@ function AddDiningModal({ onClose, onSaved }) {
 
         {/* 餐次选择 */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>餐次</div>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>
+            餐次{diningType === 'out' ? '（可选，账单有时间则自动填入）' : '*'}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
             {MEAL_TIMES.map(m => (
-              <button key={m.id} onClick={() => setMealTime(m.id)} style={{
+              <button key={m.id} onClick={() => setMealTime(mealTime === m.id ? null : m.id)} style={{
                 padding: '8px 0', borderRadius: 9, fontSize: 12, fontWeight: 600,
                 background: mealTime === m.id ? '#f97316' : '#f1f5f9',
                 color: mealTime === m.id ? '#fff' : '#94a3b8',
@@ -270,8 +279,12 @@ function AddDiningModal({ onClose, onSaved }) {
               </button>
             ))}
           </div>
+          {diningType === 'out' && dinedTime && !mealTime && (
+            <div style={{ fontSize: 12, color: '#f97316', marginTop: 4 }}>
+              账单时间：{dinedTime}
+            </div>
+          )}
         </div>
-
         {/* 自炊/外食 */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>类型</div>
@@ -460,11 +473,18 @@ function AddDiningModal({ onClose, onSaved }) {
                     <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>识别到 {outItems.length} 道菜品：</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {outItems.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 6 }}>
+                        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
                             onChange={e => setOutItemField(i, 'name_zh', e.target.value)} />
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <span style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94a3b8' }}>¥</span>
+                            <input style={{ ...smallField, paddingLeft: 18 }} type="number"
+                              value={item.price || ''}
+                              placeholder="价格"
+                              onChange={e => setOutItemField(i, 'price', e.target.value)} />
+                          </div>
                           <button onClick={() => setOutItems(items => items.filter((_, j) => j !== i))}
-                            style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
+                            style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
                         </div>
                       ))}
                     </div>
@@ -656,12 +676,21 @@ export default function DiningHistory() {
                               {r.store_name && (
                                 <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
                                   🏪 {r.store_name}
+                                  {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
                                   {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
                                 </div>
                               )}
                               {r.dining_items?.length > 0 && (
                                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                                  {r.dining_items.map(i => i.name_zh).join('、')}
+                                  {r.dining_type === 'out'
+                                    ? r.dining_items.map((i, idx) => (
+                                        <span key={idx} style={{ marginRight: 8 }}>
+                                          {i.name_zh}
+                                          {i.price && <span style={{ color: '#f97316', marginLeft: 3 }}>¥{i.price}</span>}
+                                        </span>
+                                      ))
+                                    : r.dining_items.map(i => i.name_zh).join('、')
+                                  }
                                 </div>
                               )}
                               {r.memo && (
