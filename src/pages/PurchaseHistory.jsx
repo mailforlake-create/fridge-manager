@@ -759,7 +759,14 @@ export default function PurchaseHistory() {
       {mainTab === 'dining' && <DiningHistory />}
 
       {mainTab === 'purchase' && (
+        
         <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧾 购物履历</h1>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}>
+              共 {history.length} 张小票
+            </span>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             <button onClick={() => setShowManualAdd(true)} style={{
               padding: '10px 0', borderRadius: 10, background: '#f0fdf4',
@@ -1028,8 +1035,8 @@ export default function PurchaseHistory() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {Object.entries(grouped).map(([month, items]) => (
                 <div key={month}>
-                  {/* 月份分组标题 */}
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
+                  {/* 月份分组标题 */}           
+                  <div onClick={() => setCollapsedMonths(c => ({ ...c, [month]: !c[month] }))} style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
                     <span>{month}　{items.length} 张小票</span>
                     <span style={{ color: '#16a34a' }}>
                       {items.reduce((sum, h) => sum + (h.total_amount || 0), 0) > 0
