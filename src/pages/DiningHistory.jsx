@@ -128,7 +128,8 @@ function AddDiningModal({ onClose, onSaved }) {
         "dined_at": "就餐日期YYYY-MM-DD或空字符串",
         "dined_time": "就餐时间HH:MM或空字符串",
         "amount": 合计金额数字或null,
-        "items": [{"name_zh":"菜品中文名","name_original":"原文","quantity":1,"unit":"份","price":单价数字或null}]
+        "items": [{"name_zh":"菜品中文名","name_original":"原文","quantity":数量数字,"unit":"份","price":单价数字或null}]
+        注意：price是单价，quantity是份数，小计=price×quantity
       }
       只输出JSON。` })
       const text = await callAI([{ role: 'user', content: parts }])
@@ -473,18 +474,37 @@ function AddDiningModal({ onClose, onSaved }) {
                     <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>识别到 {outItems.length} 道菜品：</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {outItems.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
-                            onChange={e => setOutItemField(i, 'name_zh', e.target.value)} />
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <span style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94a3b8' }}>¥</span>
-                            <input style={{ ...smallField, paddingLeft: 18 }} type="number"
-                              value={item.price || ''}
-                              placeholder="价格"
-                              onChange={e => setOutItemField(i, 'price', e.target.value)} />
+                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', background: '#f8fafc', borderRadius: 8 }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
+                              onChange={e => setOutItemField(i, 'name_zh', e.target.value)} />
+                            <button onClick={() => setOutItems(items => items.filter((_, j) => j !== i))}
+                              style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
                           </div>
-                          <button onClick={() => setOutItems(items => items.filter((_, j) => j !== i))}
-                            style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>份数</div>
+                              <input style={smallField} type="number" value={item.quantity || 1}
+                                onChange={e => setOutItemField(i, 'quantity', e.target.value)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单价（¥）</div>
+                              <input style={smallField} type="number" value={item.price || ''}
+                                placeholder="单价"
+                                onChange={e => setOutItemField(i, 'price', e.target.value)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>小计</div>
+                              <div style={{
+                                padding: '7px 10px', borderRadius: 8, background: '#fff',
+                                border: '1.5px solid #e2e8f0', fontSize: 13, fontWeight: 600, color: '#f97316'
+                              }}>
+                                {item.price && item.quantity
+                                  ? `¥${(Number(item.price) * Number(item.quantity)).toFixed(0)}`
+                                  : '-'}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -612,7 +632,7 @@ export default function DiningHistory() {
     grouped[monthKey][dayKey].push(r)
   })
 
-  const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
+  const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3, null: 4 }
   const mealLabel = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '点心' }
   const mealIcon = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍪' }
 
@@ -656,7 +676,7 @@ export default function DiningHistory() {
                       {new Date(day).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {[...dayRecords].sort((a, b) => mealOrder[a.meal_time] - mealOrder[b.meal_time]).map(r => (
+                      {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => (
                         <div key={r.id} style={{
                           background: '#fff', borderRadius: 12, padding: '12px 14px',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -666,7 +686,12 @@ export default function DiningHistory() {
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
-                                <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
+                                {r.meal_time && (
+                                  <>
+                                    <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
+                                    <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
+                                  </>
+                                )}
                                 <span style={{
                                   fontSize: 11, padding: '1px 7px', borderRadius: 99, fontWeight: 600,
                                   background: r.dining_type === 'home' ? '#f0fdf4' : '#fff7ed',
@@ -686,7 +711,12 @@ export default function DiningHistory() {
                                     ? r.dining_items.map((i, idx) => (
                                         <span key={idx} style={{ marginRight: 8 }}>
                                           {i.name_zh}
-                                          {i.price && <span style={{ color: '#f97316', marginLeft: 3 }}>¥{i.price}</span>}
+                                          {i.quantity > 1 && <span style={{ color: '#94a3b8', marginLeft: 2 }}>×{i.quantity}</span>}
+                                          {i.price && (
+                                            <span style={{ color: '#f97316', marginLeft: 3 }}>
+                                              ¥{i.quantity > 1 ? (Number(i.price) * Number(i.quantity)).toFixed(0) : i.price}
+                                            </span>
+                                          )}
                                         </span>
                                       ))
                                     : r.dining_items.map(i => i.name_zh).join('、')
