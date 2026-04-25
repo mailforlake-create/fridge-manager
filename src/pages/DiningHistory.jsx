@@ -670,8 +670,13 @@ const [expanded, setExpanded] = useState({})
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {Object.entries(grouped).map(([month, days]) => (
             <div key={month}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9' }}>
-                {month}
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{month}</span>
+                <span style={{ color: '#f97316' }}>
+                  {Object.values(days).flat().reduce((sum, r) => sum + (r.amount || 0), 0) > 0
+                    ? `¥${Object.values(days).flat().reduce((sum, r) => sum + (r.amount || 0), 0).toLocaleString()}`
+                    : ''}
+                </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {Object.entries(days).sort(([a], [b]) => b.localeCompare(a)).map(([day, dayRecords]) => (

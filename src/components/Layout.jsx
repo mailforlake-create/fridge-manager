@@ -23,9 +23,6 @@ export default function Layout() {
         <NavLink to="/history" style={linkStyle}>
           <span style={{ fontSize: 22 }}>🧾</span>履历
         </NavLink>
-        <NavLink to="/add" style={linkStyle}>
-          <span style={{ fontSize: 22 }}>➕</span>添加
-        </NavLink>
       </nav>
     </div>
   )
