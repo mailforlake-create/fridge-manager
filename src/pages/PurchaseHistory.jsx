@@ -110,71 +110,78 @@ function ManualReceiptModal({ onClose, onSaved }) {
   }
 
   async function save() {
-    if (!header.store_name.trim()) return alert('请输入商家名称')
-    if (!header.purchased_at) return alert('请输入购买日期')
-    if (items.every(i => !i.name_zh.trim())) return alert('请至少添加一件商品')
+  if (!header.store_name.trim()) return alert('请输入商家名称')
+  if (!header.purchased_at) return alert('请输入购买日期')
+  const validItems = items.filter(i => i.name_zh.trim())
+  if (validItems.length === 0) return alert('请至少添加一件商品')
 
-    setSaving(true)
-
-    const { data: history } = await supabase
+  setSaving(true)
+  try {
+    const { data: history, error: historyError } = await supabase
       .from('purchase_history')
       .insert({
         store_name: header.store_name,
         store_name_original: header.store_name_original || null,
         purchased_at: header.purchased_at,
-        total_amount: header.total_amount ? Number(header.total_amount) : null
+        total_amount: header.total_amount !== '' ? Number(header.total_amount) : null
       })
       .select().single()
 
-    if (history) {
-      const validItems = items.filter(i => i.name_zh.trim())
-      const historyItems = validItems.map(item => ({
-        history_id: history.id,
+    if (historyError) { console.error('履历保存失败：', historyError); alert('保存失败：' + historyError.message); setSaving(false); return }
+
+    const historyItems = validItems.map(item => ({
+      history_id: history.id,
+      name_zh: item.name_zh,
+      name_original: item.name_original || null,
+      category: item.category || null,
+      quantity: Number(item.quantity) || 1,
+      unit: item.unit || '个',
+      price: item.price !== '' ? Number(item.price) : null,
+      original_price: item.original_price !== '' ? Number(item.original_price) : null,
+      is_discount: item.is_discount,
+      discount_info: item.discount_info || null,
+      memo: item.memo || null,
+      expiry_date: item.expiry_date || null,
+      add_to_fridge: item.add_to_fridge && item.category !== '非食材'
+    }))
+
+    const { data: savedItems, error: itemsError } = await supabase
+      .from('purchase_items')
+      .insert(historyItems)
+      .select()
+
+    if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
+
+    // 入库到 ingredients
+    const fridgeItems = validItems.filter(item =>
+      item.add_to_fridge && item.category !== '非食材'
+    )
+
+    for (const item of fridgeItems) {
+      const savedItem = savedItems?.find(s => s.name_zh === item.name_zh)
+      const { error: ingError } = await supabase.from('ingredients').insert({
         name_zh: item.name_zh,
         name_original: item.name_original || null,
         category: item.category || null,
         quantity: Number(item.quantity) || 1,
         unit: item.unit || '个',
-        price: item.price ? Number(item.price) : null,
-        original_price: item.original_price ? Number(item.original_price) : null,
-        is_discount: item.is_discount,
-        discount_info: item.discount_info || null,
-        memo: item.memo || null,
         expiry_date: item.expiry_date || null,
-        add_to_fridge: item.add_to_fridge && item.category !== '非食材'
-      }))
-
-      const { data: savedItems } = await supabase
-        .from('purchase_items')
-        .insert(historyItems)
-        .select()
-
-      // 入库到 ingredients
-      const fridgeItems = validItems.filter((item, i) =>
-        item.add_to_fridge && item.category !== '非食材'
-      )
-
-      for (let i = 0; i < fridgeItems.length; i++) {
-        const item = fridgeItems[i]
-        const savedItem = savedItems?.find(s => s.name_zh === item.name_zh)
-        await supabase.from('ingredients').insert({
-          name_zh: item.name_zh,
-          name_original: item.name_original || null,
-          category: item.category || null,
-          quantity: Number(item.quantity) || 1,
-          unit: item.unit || '个',
-          expiry_date: item.expiry_date || null,
-          memo: item.memo || null,
-          location: 'fridge',
-          purchase_item_id: savedItem?.id || null
-        })
-      }
+        memo: item.memo || null,
+        location: 'fridge',
+        purchase_item_id: savedItem?.id || null
+      })
+      if (ingError) console.error('入库失败：', item.name_zh, ingError)
     }
 
-    setSaving(false)
+    console.log('保存成功')
     onSaved()
     onClose()
+  } catch (e) {
+    console.error('保存异常：', e)
+    alert('保存失败：' + e.message)
   }
+  setSaving(false)
+}
 
   return (
     <div style={{

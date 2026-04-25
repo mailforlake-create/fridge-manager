@@ -182,7 +182,7 @@ function AddDiningModal({ onClose, onSaved }) {
     }
     setSaving(true)
 
-    const { data: dining } = await supabase.from('dining_history').insert({
+    const { data: dining, error: diningError } = await supabase.from('dining_history').insert({
       dining_type: diningType,
       meal_time: mealTime || null,
       dined_at: dinedAt,
@@ -192,6 +192,9 @@ function AddDiningModal({ onClose, onSaved }) {
       amount: diningType === 'out' && amount ? Number(amount) : null,
       memo: memo || null
     }).select().single()
+
+    console.log('dining error:', JSON.stringify(diningError))
+    console.log('dining data:', JSON.stringify(dining))
 
     if (dining) {
       let items = []
@@ -591,10 +594,11 @@ function AddDiningModal({ onClose, onSaved }) {
 
 // ── 主页面 ────────────────────────────────────────────────
 export default function DiningHistory() {
-  const [records, setRecords] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [showAdd, setShowAdd] = useState(false)
+const [records, setRecords] = useState([])
+const [loading, setLoading] = useState(true)
+const [search, setSearch] = useState('')
+const [showAdd, setShowAdd] = useState(false)
+const [expanded, setExpanded] = useState({})
 
   useEffect(() => { fetchRecords() }, [])
 
@@ -677,62 +681,93 @@ export default function DiningHistory() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => (
-                        <div key={r.id} style={{
-                          background: '#fff', borderRadius: 12, padding: '12px 14px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                          borderLeft: `4px solid ${r.dining_type === 'home' ? '#16a34a' : '#f97316'}`
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
-                                {r.meal_time && (
-                                  <>
-                                    <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
-                                    <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
-                                  </>
-                                )}
-                                <span style={{
-                                  fontSize: 11, padding: '1px 7px', borderRadius: 99, fontWeight: 600,
-                                  background: r.dining_type === 'home' ? '#f0fdf4' : '#fff7ed',
-                                  color: r.dining_type === 'home' ? '#16a34a' : '#f97316'
-                                }}>{r.dining_type === 'home' ? '自炊' : '外食'}</span>
-                              </div>
-                              {r.store_name && (
-                                <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
-                                  🏪 {r.store_name}
-                                  {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
-                                  {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
-                                </div>
-                              )}
-                              {r.dining_items?.length > 0 && (
-                                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                                  {r.dining_type === 'out'
-                                    ? r.dining_items.map((i, idx) => (
-                                        <span key={idx} style={{ marginRight: 8 }}>
-                                          {i.name_zh}
-                                          {i.quantity > 1 && <span style={{ color: '#94a3b8', marginLeft: 2 }}>×{i.quantity}</span>}
-                                          {i.price && (
-                                            <span style={{ color: '#f97316', marginLeft: 3 }}>
-                                              ¥{i.quantity > 1 ? (Number(i.price) * Number(i.quantity)).toFixed(0) : i.price}
-                                            </span>
-                                          )}
-                                        </span>
-                                      ))
-                                    : r.dining_items.map(i => i.name_zh).join('、')
-                                  }
-                                </div>
-                              )}
-                              {r.memo && (
-                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>备注：{r.memo}</div>
-                              )}
-                            </div>
-                            <button onClick={() => deleteRecord(r.id)} style={{
-                              background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, marginLeft: 8
-                            }}>×</button>
-                          </div>
-                        </div>
-                      ))}
+  <div key={r.id} style={{
+    background: '#fff', borderRadius: 12, overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    borderLeft: `4px solid ${r.dining_type === 'home' ? '#16a34a' : '#f97316'}`
+  }}>
+    {/* 头部 */}
+    <div style={{ padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, cursor: 'pointer' }}
+          onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {r.meal_time && (
+              <>
+                <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
+              </>
+            )}
+            <span style={{
+              fontSize: 11, padding: '1px 7px', borderRadius: 99, fontWeight: 600,
+              background: r.dining_type === 'home' ? '#f0fdf4' : '#fff7ed',
+              color: r.dining_type === 'home' ? '#16a34a' : '#f97316'
+            }}>{r.dining_type === 'home' ? '自炊' : '外食'}</span>
+          </div>
+          {r.store_name && (
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
+              🏪 {r.store_name}
+              {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
+              {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+            {r.dining_items?.length > 0
+              ? `${r.dining_items.length} 道菜品`
+              : '无明细'}
+          </div>
+          {r.memo && (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>备注：{r.memo}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button onClick={() => deleteRecord(r.id)} style={{
+            background: '#fef2f2', color: '#ef4444', fontSize: 13,
+            padding: '5px 10px', borderRadius: 7, fontWeight: 600
+          }}>删除</button>
+          <div onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}
+            style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
+            {expanded[r.id] ? '▲' : '▼'}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* 明细展开 */}
+    {expanded[r.id] && r.dining_items?.length > 0 && (
+      <div style={{ borderTop: '1px solid #f1f5f9' }}>
+        {r.dining_items.map((item, idx) => (
+          <div key={idx} style={{
+            padding: '9px 14px', borderBottom: '1px solid #f8fafc',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name_zh}</div>
+              {item.name_original && (
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', fontSize: 13 }}>
+              <div style={{ color: '#64748b' }}>
+                {item.quantity}{item.unit}
+              </div>
+              {item.price && (
+                <div style={{ fontWeight: 600, color: '#f97316' }}>
+                  {item.quantity > 1 && (
+                    <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>
+                      ¥{item.price}×{item.quantity}
+                    </span>
+                  )}
+                  ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+))}
                     </div>
                   </div>
                 ))}
