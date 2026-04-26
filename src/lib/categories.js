@@ -3,7 +3,7 @@ export const FOOD_CATEGORIES = [
 ]
 
 export const DAILY_CATEGORIES = [
-  '清洁用品','洗护用品','厨房用品','纸品','药品','文具','衣物','日用杂货'
+  '清洁用品','洗护用品','厨房用品','纸品','文具','衣物','日用杂货'
 ]
 
 export const ALL_CATEGORIES = [

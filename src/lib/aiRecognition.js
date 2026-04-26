@@ -43,7 +43,7 @@ export function calcExpiry(mfgDate, shelfDays) {
 export async function recognizePhoto(file) {
   const base64 = await fileToBase64(file)
   const prompt = `你是食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
-name_zh(中文名), name_original(原文，可空), category(蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他),
+name_zh(中文名), name_original(原文，可空), category(蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他/药品),
 quantity(数字), unit(个/包/瓶/袋/克/毫升/升/根/片/块), expiry_date(YYYY-MM-DD或空字符串)
 只输出JSON数组。`
   const text = await callAI([{
