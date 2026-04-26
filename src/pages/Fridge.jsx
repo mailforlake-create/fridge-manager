@@ -32,6 +32,8 @@ function calcExpiryLocal(mfgDate, shelfDays) {
 function ManualAddModal({ onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [collapsedYears, setCollapsedYears] = useState({})
+  const [collapsedMonths, setCollapsedMonths] = useState({})
   const set = (k, v) => setForm(f => {
     const next = { ...f, [k]: v }
     if (k === 'mfg_date' || k === 'shelf_days') {
@@ -366,6 +368,8 @@ export default function Fridge() {
   const [showManual, setShowManual] = useState(false)
   const [showPhoto, setShowPhoto] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
+  const [collapsedYears, setCollapsedYears] = useState({})
+  const [collapsedMonths, setCollapsedMonths] = useState({})
 
   useEffect(() => { if (tab === 'food') fetchItems() }, [tab])
 
@@ -399,7 +403,16 @@ export default function Fridge() {
     const matchSearch = !search || i.name_zh?.includes(search) || i.name_original?.includes(search) || i.category?.includes(search)
     return matchCat && matchSearch
   })
-
+  const groupedByYear = {}
+  filtered.forEach(item => {
+    const dateStr = item.purchase_item?.purchase_history?.purchased_at || item.created_at
+    const d = dateStr ? new Date(dateStr) : new Date()
+    const yearKey = `${d.getFullYear()}年`
+    const monthKey = `${d.getMonth() + 1}月`
+    if (!groupedByYear[yearKey]) groupedByYear[yearKey] = {}
+    if (!groupedByYear[yearKey][monthKey]) groupedByYear[yearKey][monthKey] = []
+    groupedByYear[yearKey][monthKey].push(item)
+  })
   return (
     <div style={{ padding: '16px 16px 0' }}>
       {/* Tab 切换 */}
@@ -471,11 +484,55 @@ export default function Fridge() {
               {search ? '没有找到匹配的物品' : '食品是空的，点击上方添加'}
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {filtered.map(item => (
-                <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
-              ))}
-            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
+                  const yearItems = Object.values(months).flat()
+                  const isYearCollapsed = collapsedYears[year]
+
+                  return (
+                    <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
+                      <div onClick={() => setCollapsedYears(c => ({ ...c, [year]: !c[year] }))}
+                        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: '#334155' }}>{year}</span>
+                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{yearItems.length} 件</span>
+                        </div>
+                        <span style={{ fontSize: 14, color: '#94a3b8' }}>{isYearCollapsed ? '▼' : '▲'}</span>
+                      </div>
+
+                      {!isYearCollapsed && (
+                        <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {Object.entries(months).sort(([a], [b]) => Number(b.replace('月','')) - Number(a.replace('月',''))).map(([month, monthItems]) => {
+                            const monthKey = `${year}-${month}`
+                            const isMonthCollapsed = collapsedMonths[monthKey]
+
+                            return (
+                              <div key={month}>
+                                <div onClick={() => setCollapsedMonths(c => ({ ...c, [monthKey]: !c[monthKey] }))}
+                                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMonthCollapsed ? 0 : 8, paddingBottom: 5, borderBottom: '1px solid #f1f5f9' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>{month}</span>
+                                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{monthItems.length} 件</span>
+                                  </div>
+                                  <span style={{ fontSize: 13, color: '#94a3b8' }}>{isMonthCollapsed ? '▼' : '▲'}</span>
+                                </div>
+
+                                {!isMonthCollapsed && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {monthItems.map(item => (
+                                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
           )}
         </>
       )}
