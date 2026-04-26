@@ -166,12 +166,15 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     </div>
   )
 
-  return (
-    <div style={{
-      background: '#fff', borderRadius: 12, padding: '12px 14px',
-      borderLeft: `4px solid ${statusColor}`,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-    }}>
+  const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
+
+      return (
+        <div style={{
+          background: '#fff', borderRadius: 12, padding: '12px 14px',
+          borderLeft: `4px solid ${isFullyConsumed ? '#cbd5e1' : statusColor}`,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          opacity: isFullyConsumed ? 0.6 : 1
+        }}>
       {/* 主信息行 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }} onClick={() => setEditing(true)}>

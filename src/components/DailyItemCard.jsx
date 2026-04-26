@@ -6,6 +6,7 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const [consuming, setConsuming] = useState(false)
   const [consumeQty, setConsumeQty] = useState(1)
   const [editingQty, setEditingQty] = useState(false)
+  const [showConsumed, setShowConsumed] = useState(false)
   const [form, setForm] = useState({
     name_zh: item.name_zh,
     name_original: item.name_original || '',
@@ -112,12 +113,15 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
     </div>
   )
 
-  return (
-    <div style={{
-      background: '#fff', borderRadius: 12, padding: '12px 14px',
-      borderLeft: '4px solid #3b82f6',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
-    }}>
+const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
+
+    return (
+      <div style={{
+        background: '#fff', borderRadius: 12, padding: '12px 14px',
+        borderLeft: `4px solid ${isFullyConsumed ? '#cbd5e1' : '#3b82f6'}`,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        opacity: isFullyConsumed ? 0.6 : 1
+      }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }} onClick={() => setEditing(true)}>
           <div style={{ fontWeight: 600, fontSize: 15 }}>{item.name_zh}</div>

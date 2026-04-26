@@ -21,6 +21,7 @@ export default function DailyItems() {
   const [saving, setSaving] = useState(false)
   const [collapsedYears, setCollapsedYears] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
+  const [showConsumed, setShowConsumed] = useState(false)
 
   useEffect(() => { fetchItems() }, [])
 
@@ -39,7 +40,7 @@ export default function DailyItems() {
         )
       `)
       .order('created_at', { ascending: false })
-    setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
+    setItems(data || [])
     setLoading(false)
   }
 
@@ -77,7 +78,8 @@ export default function DailyItems() {
       i.name_zh?.includes(search) ||
       i.name_original?.includes(search) ||
       i.category?.includes(search)
-    return matchCat && matchSearch
+    const matchConsumed = showConsumed || (i.quantity || 0) > (i.consumed_quantity || 0)
+    return matchCat && matchSearch && matchConsumed
   })
 
   const field = {
@@ -90,7 +92,9 @@ export default function DailyItems() {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧴 日用品</h1>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
-          {filter === 'all' && !search ? `共 ${items.length} 件` : `${filtered.length} / ${items.length} 件`}
+          {filter === 'all' && !search
+            ? `共 ${items.filter(i => (i.quantity||0) > (i.consumed_quantity||0)).length} 件`
+            : `${filtered.length} / ${items.filter(i => (i.quantity||0) > (i.consumed_quantity||0)).length} 件`}
         </span>
       </div>
 
@@ -115,7 +119,19 @@ export default function DailyItems() {
           }}>{c === 'all' ? '全部' : c}</button>
         ))}
       </div>
-
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569', userSelect: 'none' }}>
+          <input type="checkbox" checked={showConsumed}
+            onChange={e => setShowConsumed(e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: '#3b82f6' }} />
+          显示已消耗物品
+        </label>
+        {showConsumed && (
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            含 {items.filter(i => (i.quantity||0) <= (i.consumed_quantity||0)).length} 件已消耗
+          </span>
+        )}
+      </div>
       {/* 手动添加表单 */}
       {adding && (
         <div style={{
