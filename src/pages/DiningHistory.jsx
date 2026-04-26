@@ -750,6 +750,7 @@ export default function DiningHistory() {
   const [expanded, setExpanded] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [editingRecord, setEditingRecord] = useState(null)
+  const [collapsedYears, setCollapsedYears] = useState({})
 
   useEffect(() => { fetchRecords() }, [])
 
@@ -776,17 +777,20 @@ export default function DiningHistory() {
       r.dining_items?.some(i => i.name_zh?.toLowerCase().includes(s))
   })
 
-  const grouped = {}
+  const groupedByYear = {}
   filtered.forEach(r => {
     const d = new Date(r.dined_at)
-    const monthKey = `${d.getFullYear()}年${d.getMonth() + 1}月`
-    if (!grouped[monthKey]) grouped[monthKey] = {}
+    const yearKey = `${d.getFullYear()}年`
+    const monthKey = `${d.getMonth() + 1}月`
+    if (!groupedByYear[yearKey]) groupedByYear[yearKey] = {}
+    if (!groupedByYear[yearKey][monthKey]) groupedByYear[yearKey][monthKey] = {}
     const dayKey = r.dined_at
-    if (!grouped[monthKey][dayKey]) grouped[monthKey][dayKey] = []
-    grouped[monthKey][dayKey].push(r)
+    if (!groupedByYear[yearKey][monthKey][dayKey]) groupedByYear[yearKey][monthKey][dayKey] = []
+    groupedByYear[yearKey][monthKey][dayKey].push(r)
   })
 
   const totalCount = filtered.length
+
 
   return (
     <div style={{ padding: 16 }}>
@@ -817,120 +821,139 @@ export default function DiningHistory() {
           {search ? '没有找到匹配的记录' : '暂无餐饮记录，点击右上角开始记录'}
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {Object.entries(grouped).map(([month, days]) => {
-            const monthRecords = Object.values(days).flat()
-            const monthTotal = monthRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
-            const isCollapsed = collapsedMonths[month]
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {Object.entries(groupedByYear).map(([year, months]) => {
+            const yearRecords = Object.values(months).flatMap(m => Object.values(m).flat())
+            const yearTotal = yearRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+            const isYearCollapsed = collapsedYears[year]
 
             return (
-              <div key={month}>
-                {/* 月份标题 - 可折叠 */}
-                <div onClick={() => setCollapsedMonths(c => ({ ...c, [month]: !c[month] }))}
-                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isCollapsed ? 0 : 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9' }}>
+              <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
+                {/* 年份标题 */}
+                <div onClick={() => setCollapsedYears(c => ({ ...c, [year]: !c[year] }))}
+                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f8fafc' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>{month}</span>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{monthRecords.length} 条</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: '#334155' }}>{year}</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{yearRecords.length} 条</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {monthTotal > 0 && (
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f97316' }}>¥{monthTotal.toLocaleString()}</span>
+                    {yearTotal > 0 && (
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#f97316' }}>¥{yearTotal.toLocaleString()}</span>
                     )}
-                    <span style={{ fontSize: 14, color: '#94a3b8' }}>{isCollapsed ? '▼' : '▲'}</span>
+                    <span style={{ fontSize: 14, color: '#94a3b8' }}>{isYearCollapsed ? '▼' : '▲'}</span>
                   </div>
                 </div>
 
-                {!isCollapsed && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {Object.entries(days).sort(([a], [b]) => b.localeCompare(a)).map(([day, dayRecords]) => (
-                      <div key={day}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>
-                          {new Date(day).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => (
-                            <div key={r.id} style={{
-                              background: '#fff', borderRadius: 12, overflow: 'hidden',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                              borderLeft: `4px solid ${r.dining_type === 'home' ? '#16a34a' : '#f97316'}`
-                            }}>
-                              <div style={{ padding: '12px 14px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                  <div style={{ flex: 1, cursor: 'pointer' }}
-                                    onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      {r.meal_time && (
-                                        <>
-                                          <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
-                                          <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
-                                        </>
-                                      )}
-                                      <span style={{
-                                        fontSize: 11, padding: '1px 7px', borderRadius: 99, fontWeight: 600,
-                                        background: r.dining_type === 'home' ? '#f0fdf4' : '#fff7ed',
-                                        color: r.dining_type === 'home' ? '#16a34a' : '#f97316'
-                                      }}>{r.dining_type === 'home' ? '自炊' : '外食'}</span>
-                                    </div>
-                                    {r.store_name && (
-                                      <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
-                                        🏪 {r.store_name}
-                                        {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
-                                        {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
-                                      </div>
-                                    )}
-                                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-                                      {r.dining_items?.length > 0 ? `${r.dining_items.length} 道菜品` : '无明细'}
-                                    </div>
-                                    {r.memo && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>备注：{r.memo}</div>}
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                    <button onClick={() => setEditingRecord(r)} style={{
-                                      background: '#f1f5f9', color: '#475569', fontSize: 13,
-                                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                                    }}>编辑</button>
-                                    <button onClick={() => deleteRecord(r.id)} style={{
-                                      background: '#fef2f2', color: '#ef4444', fontSize: 13,
-                                      padding: '5px 10px', borderRadius: 7, fontWeight: 600
-                                    }}>删除</button>
-                                    <div onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}
-                                      style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
-                                      {expanded[r.id] ? '▲' : '▼'}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                {!isYearCollapsed && (
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {Object.entries(months).map(([month, days]) => {
+                      const monthRecords = Object.values(days).flat()
+                      const monthTotal = monthRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                      const monthKey = `${year}-${month}`
+                      const isMonthCollapsed = collapsedMonths[monthKey]
 
-                              {expanded[r.id] && r.dining_items?.length > 0 && (
-                                <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                                  {r.dining_items.map((item, idx) => (
-                                    <div key={idx} style={{
-                                      padding: '9px 14px', borderBottom: '1px solid #f8fafc',
-                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                                    }}>
-                                      <div>
-                                        <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name_zh}</div>
-                                        {item.name_original && <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>}
-                                      </div>
-                                      <div style={{ textAlign: 'right', fontSize: 13 }}>
-                                        <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
-                                        {item.price && (
-                                          <div style={{ fontWeight: 600, color: '#f97316' }}>
-                                            {item.quantity > 1 && (
-                                              <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>¥{item.price}×{item.quantity}</span>
-                                            )}
-                                            ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                      return (
+                        <div key={month}>
+                          <div onClick={() => setCollapsedMonths(c => ({ ...c, [monthKey]: !c[monthKey] }))}
+                            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMonthCollapsed ? 0 : 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>{month}</span>
+                              <span style={{ fontSize: 12, color: '#94a3b8' }}>{monthRecords.length} 条</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {monthTotal > 0 && (
+                                <span style={{ fontSize: 13, fontWeight: 600, color: '#f97316' }}>¥{monthTotal.toLocaleString()}</span>
+                              )}
+                              <span style={{ fontSize: 13, color: '#94a3b8' }}>{isMonthCollapsed ? '▼' : '▲'}</span>
+                            </div>
+                          </div>
+
+                          {!isMonthCollapsed && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                              {Object.entries(days).sort(([a], [b]) => b.localeCompare(a)).map(([day, dayRecords]) => (
+                                <div key={day}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>
+                                    {new Date(day).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => (
+                                      <div key={r.id} style={{
+                                        background: '#fff', borderRadius: 12, overflow: 'hidden',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                        borderLeft: `4px solid ${r.dining_type === 'home' ? '#16a34a' : '#f97316'}`
+                                      }}>
+                                        <div style={{ padding: '12px 14px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div style={{ flex: 1, cursor: 'pointer' }}
+                                              onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                {r.meal_time && (
+                                                  <>
+                                                    <span style={{ fontSize: 16 }}>{mealIcon[r.meal_time]}</span>
+                                                    <span style={{ fontWeight: 600, fontSize: 14 }}>{mealLabel[r.meal_time]}</span>
+                                                  </>
+                                                )}
+                                                <span style={{
+                                                  fontSize: 11, padding: '1px 7px', borderRadius: 99, fontWeight: 600,
+                                                  background: r.dining_type === 'home' ? '#f0fdf4' : '#fff7ed',
+                                                  color: r.dining_type === 'home' ? '#16a34a' : '#f97316'
+                                                }}>{r.dining_type === 'home' ? '自炊' : '外食'}</span>
+                                              </div>
+                                              {r.store_name && (
+                                                <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
+                                                  🏪 {r.store_name}
+                                                  {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
+                                                  {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
+                                                </div>
+                                              )}
+                                              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                                                {r.dining_items?.length > 0 ? `${r.dining_items.length} 道菜品` : '无明细'}
+                                              </div>
+                                              {r.memo && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>备注：{r.memo}</div>}
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                              <button onClick={() => setEditingRecord(r)} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
+                                              <button onClick={() => deleteRecord(r.id)} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
+                                              <div onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}
+                                                style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
+                                                {expanded[r.id] ? '▲' : '▼'}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        {expanded[r.id] && r.dining_items?.length > 0 && (
+                                          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+                                            {r.dining_items.map((item, idx) => (
+                                              <div key={idx} style={{ padding: '9px 14px', borderBottom: '1px solid #f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                  <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name_zh}</div>
+                                                  {item.name_original && <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>}
+                                                </div>
+                                                <div style={{ textAlign: 'right', fontSize: 13 }}>
+                                                  <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
+                                                  {item.price && (
+                                                    <div style={{ fontWeight: 600, color: '#f97316' }}>
+                                                      {item.quantity > 1 && (
+                                                        <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>¥{item.price}×{item.quantity}</span>
+                                                      )}
+                                                      ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
                                           </div>
                                         )}
                                       </div>
-                                    </div>
-                                  ))}
+                                    ))}
+                                  </div>
                                 </div>
-                              )}
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
