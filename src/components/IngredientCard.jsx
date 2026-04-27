@@ -224,7 +224,12 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
 
         {/* 过期信息 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          {item.expiry_date && (
+          {isFullyConsumed ? (
+            <span style={{
+              fontSize: 12, fontWeight: 600, color: '#94a3b8',
+              background: '#f1f5f9', padding: '2px 8px', borderRadius: 99
+            }}>已使用</span>
+          ) : item.expiry_date ? (
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>到期 {item.expiry_date}</div>
               <span style={{
@@ -237,7 +242,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
                   : `还剩 ${daysLeft} 天`}
               </span>
             </div>
-          )}
+          ) : null}
           <button onClick={() => onDelete(item.id)} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1, marginTop: 4
           }}>×</button>

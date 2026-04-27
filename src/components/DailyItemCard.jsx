@@ -141,9 +141,17 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             </div>
           )}
         </div>
-        <button onClick={() => onDelete(item.id)} style={{
-          fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
-        }}>×</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          {isFullyConsumed && (
+            <span style={{
+              fontSize: 12, fontWeight: 600, color: '#94a3b8',
+              background: '#f1f5f9', padding: '2px 8px', borderRadius: 99
+            }}>已使用</span>
+          )}
+          <button onClick={() => onDelete(item.id)} style={{
+            fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
+          }}>×</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
