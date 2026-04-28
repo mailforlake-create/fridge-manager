@@ -228,7 +228,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
             <span style={{
               fontSize: 12, fontWeight: 600, color: '#94a3b8',
               background: '#f1f5f9', padding: '2px 8px', borderRadius: 99
-            }}>已使用</span>
+            }}>已食用</span>
           ) : item.expiry_date ? (
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>到期 {item.expiry_date}</div>
@@ -265,7 +265,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
             background: consuming ? '#f1f5f9' : '#fef3c7',
             color: consuming ? '#475569' : '#92400e'
           }}>
-          {consuming ? '取消' : '消耗'}
+          {consuming ? '取消' : '食用'}
         </button>
       </div>
 
@@ -322,7 +322,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
             <button onClick={() => consumeItem(false)} style={{
               flex: 2, padding: '10px 0', borderRadius: 10,
               background: '#f59e0b', color: '#fff', fontSize: 14, fontWeight: 700
-            }}>消耗 {consumeQty}{item.unit}</button>
+            }}>已食用 {consumeQty}{item.unit}</button>
             <button onClick={() => consumeItem(true)} style={{
               flex: 1, padding: '10px 0', borderRadius: 10,
               background: '#ef4444', color: '#fff', fontSize: 14, fontWeight: 600

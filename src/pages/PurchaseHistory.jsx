@@ -1131,11 +1131,13 @@ export default function PurchaseHistory() {
                                                   <div style={{ flex: 1 }}>
                                                     <div style={{ fontSize: 14, fontWeight: 500, color: item.category === '非食材' ? '#94a3b8' : '#1e293b' }}>
                                                       {item.name_zh}
-                                                      {item.add_to_fridge && !isConsumed && (
-                                                        <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 6 }}>已入库</span>
+                                                     {item.add_to_fridge && !isConsumed && (
+                                                        <span style={{ fontSize: 11, color: isDailyCategory(item.category) ? '#3b82f6' : '#16a34a', marginLeft: 6 }}>已入库</span>
                                                       )}
                                                       {isConsumed && (
-                                                        <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>已使用</span>
+                                                        <span style={{ fontSize: 11, color: isDailyCategory(item.category) ? '#3b82f6' : '#16a34a', marginLeft: 6 }}>
+                                                          {isDailyCategory(item.category) ? '已用完' : '已食用'}
+                                                        </span>
                                                       )}
                                                     </div>
                                                     {item.name_original && <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>}

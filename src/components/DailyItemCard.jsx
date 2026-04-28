@@ -22,8 +22,8 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
 
   async function consumeItem(all) {
     const qty = all ? remaining : Number(consumeQty)
-    if (!qty || qty <= 0) return alert('请输入有效的消耗数量')
-    if (qty > remaining) return alert(`最多可消耗 ${remaining}${item.unit}`)
+    if (!qty || qty <= 0) return alert('请输入有效的使用数量')
+    if (qty > remaining) return alert(`最多可使用 ${remaining}${item.unit}`)
     const newConsumed = (item.consumed_quantity || 0) + qty
     await supabase.from('daily_items').update({ consumed_quantity: newConsumed }).eq('id', item.id)
     onUpdate({ ...item, consumed_quantity: newConsumed })
@@ -169,7 +169,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             background: consuming ? '#f1f5f9' : '#dbeafe',
             color: consuming ? '#475569' : '#1d4ed8'
           }}>
-          {consuming ? '取消' : '消耗'}
+          {consuming ? '取消' : '已使用'}
         </button>
       </div>
 
@@ -203,7 +203,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             <button onClick={() => consumeItem(false)} style={{
               flex: 2, padding: '10px 0', borderRadius: 10,
               background: '#3b82f6', color: '#fff', fontSize: 14, fontWeight: 700
-            }}>消耗 {consumeQty}{item.unit}</button>
+            }}>已使用 {consumeQty}{item.unit}</button>
             <button onClick={() => consumeItem(true)} style={{
               flex: 1, padding: '10px 0', borderRadius: 10,
               background: '#ef4444', color: '#fff', fontSize: 14, fontWeight: 600

@@ -90,7 +90,7 @@ export default function DailyItems() {
   return (
     <div style={{ padding: '16px 16px 0' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧴 日用品</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧴 非食用品</h1>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>
           {filter === 'all' && !search
             ? `共 ${items.filter(i => (i.quantity||0) > (i.consumed_quantity||0)).length} 件`
@@ -124,11 +124,11 @@ export default function DailyItems() {
           <input type="checkbox" checked={showConsumed}
             onChange={e => setShowConsumed(e.target.checked)}
             style={{ width: 15, height: 15, accentColor: '#3b82f6' }} />
-          显示已消耗物品
+          显示已使用物品
         </label>
         {showConsumed && (
           <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            含 {items.filter(i => (i.quantity||0) <= (i.consumed_quantity||0)).length} 件已消耗
+            含 {items.filter(i => (i.quantity||0) <= (i.consumed_quantity||0)).length} 件已使用
           </span>
         )}
       </div>
@@ -200,7 +200,7 @@ export default function DailyItems() {
           width: '100%', padding: '11px 0', borderRadius: 10, marginBottom: 16,
           background: '#eff6ff', color: '#3b82f6', fontSize: 14, fontWeight: 600,
           border: '1.5px dashed #93c5fd'
-        }}>+ 手动添加日用品</button>
+        }}>+ 手动添加非食用品</button>
       )}
 
       {loading ? (

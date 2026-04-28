@@ -423,7 +423,7 @@ export default function Fridge() {
     <div style={{ padding: '16px 16px 0' }}>
       {/* Tab 切换 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16, background: '#f1f5f9', borderRadius: 12, padding: 4 }}>
-        {[['food','🥦 食品'], ['daily','🧴 日用品']].map(([id, label]) => (
+        {[['food','🥦 食用品'], ['daily','🧴 非食用品']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '9px 0', borderRadius: 9, fontSize: 13, fontWeight: 600,
             background: tab === id ? '#fff' : 'transparent',
@@ -438,7 +438,7 @@ export default function Fridge() {
       {tab === 'food' && (
         <>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700 }}>🥦 食品</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700 }}>🥦 食用品</h1>
             <span style={{ fontSize: 13, color: '#94a3b8' }}>
               {filter === 'all' && !search
                 ? `共 ${items.filter(i => (i.quantity||0) > (i.consumed_quantity||0)).length} 件`
@@ -468,11 +468,11 @@ export default function Fridge() {
               <input type="checkbox" checked={showConsumed}
                 onChange={e => setShowConsumed(e.target.checked)}
                 style={{ width: 15, height: 15, accentColor: '#16a34a' }} />
-              显示已消耗物品
+              显示已食用物品
             </label>
             {showConsumed && (
               <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                含 {items.filter(i => (i.quantity||0) <= (i.consumed_quantity||0)).length} 件已消耗
+                含 {items.filter(i => (i.quantity||0) <= (i.consumed_quantity||0)).length} 件已食用
               </span>
             )}
           </div>
