@@ -130,14 +130,18 @@ function ReceiptScanModal({ onClose, onSaved }) {
           expiry_date: item.expiry_date || null,
           memo: item.memo || null,
         }))
-        const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
+        // 建立 index → purchase_item_id 的映射
+        const purchaseItemMap = {}
+        aiItems.forEach((item, i) => {
+          const savedItem = savedItems?.[i]
+          if (savedItem) purchaseItemMap[i] = savedItem.id
+        })
 
-        // 食品入库
-        const fridgeItems = aiItems.filter((item, i) =>
-          selected[i] && !isDailyCategory(item.category) && item.category !== '非食材'
-        )
-        for (const item of fridgeItems) {
-          const savedItem = savedItems?.find(s => s.name_zh === item.name_zh)
+        const fridgeItems = aiItems
+          .map((item, i) => ({ item, i }))
+          .filter(({ item, i }) => selected[i] && !isDailyCategory(item.category) && item.category !== '非食材')
+
+        for (const { item, i } of fridgeItems) {
           await supabase.from('ingredients').insert({
             name_zh: item.name_zh,
             name_original: item.name_original || null,
@@ -147,16 +151,16 @@ function ReceiptScanModal({ onClose, onSaved }) {
             expiry_date: item.expiry_date || null,
             memo: item.memo || null,
             location: 'fridge',
-            purchase_item_id: savedItem?.id || null
+            purchase_item_id: purchaseItemMap[i] || null
           })
         }
 
-        // 日用品入库
-        const dailyItems = aiItems.filter((item, i) =>
-          selected[i] && isDailyCategory(item.category)
-        )
-        for (const item of dailyItems) {
-          const savedItem = savedItems?.find(s => s.name_zh === item.name_zh)
+        // 日用品同样处理
+        const dailyItems = aiItems
+          .map((item, i) => ({ item, i }))
+          .filter(({ item, i }) => selected[i] && isDailyCategory(item.category))
+
+        for (const { item, i } of dailyItems) {
           await supabase.from('daily_items').insert({
             name_zh: item.name_zh,
             name_original: item.name_original || null,
@@ -165,11 +169,10 @@ function ReceiptScanModal({ onClose, onSaved }) {
             unit: item.unit || '个',
             location: 'home',
             memo: item.memo || null,
-            purchase_item_id: savedItem?.id || null
+            purchase_item_id: purchaseItemMap[i] || null
           })
-          // 更新 purchase_items 的 add_to_fridge
-          if (savedItem) {
-            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItem.id)
+          if (purchaseItemMap[i]) {
+            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[i])
           }
         }
       }
