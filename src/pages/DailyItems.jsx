@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import DailyItemCard from '../components/DailyItemCard'
-
-const UNITS = ['个','包','瓶','袋','盒','卷','片','套']
-const CATEGORIES = ['清洁用品','洗护用品','厨房用品','文具','药品','其他']
-const LOCATIONS = [['home','家'], ['storage','储物间'], ['bathroom','浴室']]
+import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 
 const EMPTY_FORM = {
   name_zh: '', name_original: '', category: '',
@@ -166,10 +163,10 @@ export default function DailyItems() {
             </div>
             <select style={field} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
               <option value="">选择分类</option>
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8 }}>
-              {LOCATIONS.map(([v, l]) => (
+              {DAILY_LOCATIONS.map(([v, l]) => (
                 <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
                   flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13,
                   background: form.location === v ? '#3b82f6' : '#f1f5f9',

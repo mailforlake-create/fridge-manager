@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
-import { FOOD_CATEGORIES, DAILY_CATEGORIES, isDailyCategory } from '../lib/categories'
+import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, isDailyCategory } from '../lib/categories'
 
 function calcExpiry(mfgDate, shelfDays) {
   if (!mfgDate || !shelfDays) return ''
@@ -11,8 +11,6 @@ function calcExpiry(mfgDate, shelfDays) {
   return d.toISOString().split('T')[0]
 }
 
-const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
-const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','零食','其他','非食材']
 
 const smallField = {
   width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -520,7 +518,13 @@ function ManualReceiptModal({ onClose, onSaved }) {
                   <select style={{ ...smallField, flex: 2 }} value={item.category}
                     onChange={e => setItemField(i, 'category', e.target.value)}>
                     <option value="">分类</option>
-                    {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      <optgroup label="食用品">
+                        {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </optgroup>
+                      <optgroup label="非食用品">
+                        {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </optgroup>
+                      <option value="非食材">非食材（不入库）</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -943,7 +947,14 @@ export default function PurchaseHistory() {
                     <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>分类</div>
                     <select style={smallField} value={editingItem.item.category || ''}
                       onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, category: e.target.value } }))}>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      <option value="">分类</option>
+                      <optgroup label="食用品">
+                        {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </optgroup>
+                      <optgroup label="非食用品">
+                        {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                      </optgroup>
+                      <option value="非食材">非食材（不入库）</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>

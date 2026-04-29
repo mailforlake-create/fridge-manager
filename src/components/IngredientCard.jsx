@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
 
 export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [editing, setEditing] = useState(false)
@@ -128,22 +129,22 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
             <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>单位</div>
             <select style={field} value={form.unit}
               onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-              {['个','包','瓶','袋','克','毫升','升','根','片','块'].map(u => <option key={u}>{u}</option>)}
+              {UNITS.map(u => <option key={u}>{u}</option>)}
             </select>
           </div>
         </div>
         <select style={field} value={form.category}
           onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
-          {['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','其他'].map(c =>
-            <option key={c}>{c}</option>)}
+          <option value="">选择分类</option>
+            {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
         </select>
         <input style={field} type="date" value={form.expiry_date}
           onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
         <input style={field} value={form.memo}
           onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="备注（可选）" />
         <div style={{ display: 'flex', gap: 8 }}>
-          {[['fridge','冰箱'],['freezer','冷冻'],['pantry','常温']].map(([v, l]) => (
+          {LOCATIONS.map(([v, l]) => (
             <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
               flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13,
               background: form.location === v ? '#16a34a' : '#f1f5f9',

@@ -3,9 +3,8 @@ import { supabase } from '../lib/supabase'
 import IngredientCard from '../components/IngredientCard'
 import DailyItems from './DailyItems'
 import { recognizePhoto, callAI, fileToBase64, calcExpiry } from '../lib/aiRecognition'
-import { FOOD_CATEGORIES } from '../lib/categories'
+import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
 
-const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
 const EMPTY_FORM = {
   name_zh: '', name_original: '', category: '',
   quantity: 1, unit: '个', expiry_date: '',

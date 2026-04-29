@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const [editing, setEditing] = useState(false)
@@ -49,10 +50,6 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
     border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
   }
 
-  const CATEGORIES = ['清洁用品','洗护用品','厨房用品','文具','药品','其他']
-  const UNITS = ['个','包','瓶','袋','盒','卷','片','套']
-  const LOCATIONS = [['home','家'], ['storage','储物间'], ['bathroom','浴室']]
-
   if (editing) return (
     <div style={{
       background: '#fff', borderRadius: 12, padding: 14,
@@ -79,16 +76,16 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>单位</div>
             <select style={field} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-              {UNITS.map(u => <option key={u}>{u}</option>)}
+              {DAILY_UNITS.map(u => <option key={u}>{u}</option>)}
             </select>
           </div>
         </div>
         <select style={field} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
-          {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 8 }}>
-          {LOCATIONS.map(([v, l]) => (
+          {DAILY_LOCATIONS.map(([v, l]) => (
             <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
               flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13,
               background: form.location === v ? '#3b82f6' : '#f1f5f9',
