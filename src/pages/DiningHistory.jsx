@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { callAI, fileToBase64 } from '../lib/aiRecognition'
+import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
+import PhotoViewer from '../components/PhotoViewer'
 
 function parseJSON(text) {
   try {
@@ -80,6 +82,20 @@ function EditDiningModal({ record, onClose, onSaved }) {
           price: item.price ? Number(item.price) : null
         }))
       )
+    }
+    // 上传待处理的照片（绑定到整条履历）
+    if (pendingPhotos.length > 0 && dining) {
+      for (const file of pendingPhotos) {
+        try {
+          const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
+          await supabase.from('dining_photos').insert({
+            dining_id: dining.id,
+            dining_item_id: null,
+            file_path: filePath,
+            url
+          })
+        } catch (e) { console.error('照片上传失败', e) }
+      }
     }
     setSaving(false)
     onSaved()
@@ -202,9 +218,90 @@ function EditDiningModal({ record, onClose, onSaved }) {
     </div>
   )
 }
+function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, uploading, onClose, onSaveMemo }) {
+  const [memo, setMemo] = useState(item.memo || '')
+  const [saving, setSaving] = useState(false)
 
+  async function save() {
+    setSaving(true)
+    await supabase.from('dining_items').update({ memo: memo || null }).eq('id', item.id)
+    onSaveMemo(item.id, memo)
+    setSaving(false)
+  }
+
+  const itemPhotos = photos[`${diningId}-item-${item.id}`] || []
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
+        width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{item.name_zh}</div>
+          <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* 基本信息 */}
+        <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+          {item.name_original && (
+            <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>{item.name_original}</div>
+          )}
+          <div style={{ fontSize: 14, color: '#475569' }}>
+            {item.quantity}{item.unit}
+            {item.price && (
+              <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>
+                {item.quantity > 1
+                  ? `¥${item.price}×${item.quantity} = ¥${(Number(item.price) * Number(item.quantity)).toFixed(0)}`
+                  : `¥${item.price}`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 备注 */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>备注</div>
+          <textarea
+            value={memo}
+            onChange={e => setMemo(e.target.value)}
+            placeholder="添加备注..."
+            rows={3}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 14,
+              border: '1.5px solid #e2e8f0', outline: 'none', resize: 'none',
+              fontFamily: 'inherit', boxSizing: 'border-box'
+            }}
+          />
+          <button onClick={save} disabled={saving} style={{
+            marginTop: 8, padding: '8px 16px', borderRadius: 8,
+            background: '#f97316', color: '#fff', fontSize: 13, fontWeight: 600,
+            opacity: saving ? 0.7 : 1
+          }}>{saving ? '保存中...' : '保存备注'}</button>
+        </div>
+
+        {/* 照片 */}
+        <div>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 8 }}>
+            菜品照片（{itemPhotos.length} 张）
+          </div>
+          <PhotoViewer
+            photos={itemPhotos}
+            onAdd={files => onAddPhotos(files, diningId, item.id)}
+            onDelete={onDeletePhoto}
+            uploading={uploading}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 // ── 录入弹窗 ──────────────────────────────────────────────
 function AddDiningModal({ onClose, onSaved }) {
+  const [pendingPhotos, setPendingPhotos] = useState([]) // 待上传的文件
   const [step, setStep] = useState('type')
   const [diningType, setDiningType] = useState(null)
   const [mealTime, setMealTime] = useState(null)
@@ -241,6 +338,7 @@ function AddDiningModal({ onClose, onSaved }) {
   }
 
   async function recognizeDish(files) {
+    setPendingPhotos(prev => [...prev, ...files]) // 保存原始文件
     setLoading(true)
     try {
       const parts = []
@@ -292,6 +390,7 @@ function AddDiningModal({ onClose, onSaved }) {
   }
 
   async function recognizeOutDish(files) {
+    setPendingPhotos(prev => [...prev, ...files])
     setLoading(true)
     try {
       const parts = []
@@ -751,9 +850,16 @@ export default function DiningHistory() {
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [editingRecord, setEditingRecord] = useState(null)
   const [collapsedYears, setCollapsedYears] = useState({})
+  const [detailItem, setDetailItem] = useState(null) // { item, diningId }
 
   useEffect(() => { fetchRecords() }, [])
 
+  function handleSaveMemo(itemId, memo) {
+    setRecords(records.map(r => ({
+      ...r,
+      dining_items: r.dining_items?.map(i => i.id === itemId ? { ...i, memo } : i)
+    })))
+  }
   async function fetchRecords() {
     setLoading(true)
     const { data } = await supabase
@@ -761,7 +867,68 @@ export default function DiningHistory() {
       .select(`*, dining_items(*)`)
       .order('dined_at', { ascending: false })
     setRecords(data || [])
+    if (data?.length) {
+      await fetchPhotos(data.map(r => r.id))
+    }
     setLoading(false)
+  }
+
+  // 照片相关
+  const [photos, setPhotos] = useState({}) // { diningId: [photo...], `${diningId}-item-${itemId}`: [photo...] }
+  const [uploadingKey, setUploadingKey] = useState(null)
+
+  async function fetchPhotos(diningIds) {
+    if (!diningIds.length) return
+    const { data } = await supabase
+      .from('dining_photos')
+      .select('*')
+      .in('dining_id', diningIds)
+    if (!data) return
+    const map = {}
+    data.forEach(p => {
+      const key = p.dining_item_id ? `${p.dining_id}-item-${p.dining_item_id}` : p.dining_id
+      if (!map[key]) map[key] = []
+      map[key].push(p)
+    })
+    setPhotos(map)
+  }
+
+  async function handleAddPhotos(files, diningId, itemId = null) {
+    const key = itemId ? `${diningId}-item-${itemId}` : diningId
+    setUploadingKey(key)
+    try {
+      const folder = itemId ? `dining/${diningId}/items` : `dining/${diningId}`
+      const newPhotos = []
+      for (const file of files) {
+        const { filePath, url } = await uploadPhoto(supabase, file, folder)
+        const { data } = await supabase.from('dining_photos').insert({
+          dining_id: diningId,
+          dining_item_id: itemId || null,
+          file_path: filePath,
+          url
+        }).select().single()
+        if (data) newPhotos.push(data)
+      }
+      setPhotos(prev => ({
+        ...prev,
+        [key]: [...(prev[key] || []), ...newPhotos]
+      }))
+    } catch (e) { alert('上传失败：' + e.message) }
+    setUploadingKey(null)
+  }
+
+  async function handleDeletePhoto(photo) {
+    try {
+      await deletePhoto(supabase, photo.file_path)
+      await supabase.from('dining_photos').delete().eq('id', photo.id)
+      const key = photo.dining_item_id
+        ? `${photo.dining_id}-item-${photo.dining_item_id}`
+        : photo.dining_id
+      setPhotos(prev => ({
+        ...prev,
+        [key]: (prev[key] || []).filter(p => p.id !== photo.id)
+      }))
+    } catch (e) { alert('删除失败：' + e.message) }
   }
 
   async function deleteRecord(id) {
@@ -921,24 +1088,55 @@ export default function DiningHistory() {
                                             </div>
                                           </div>
                                         </div>
-                                        {expanded[r.id] && r.dining_items?.length > 0 && (
+                                        {expanded[r.id] && (
                                           <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                                            {r.dining_items.map((item, idx) => (
-                                              <div key={idx} style={{ padding: '9px 14px', borderBottom: '1px solid #f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div>
+                                            {/* 整条履历照片放在最前面 */}
+                                            <div style={{ padding: '10px 14px', borderBottom: '1px solid #f8fafc' }}>
+                                              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>餐饮照片</div>
+                                              <PhotoViewer
+                                                photos={photos[r.id] || []}
+                                                onAdd={files => handleAddPhotos(files, r.id)}
+                                                onDelete={handleDeletePhoto}
+                                                uploading={uploadingKey === r.id}
+                                              />
+                                            </div>
+
+                                            {/* 菜品列表 */}
+                                            {r.dining_items?.map((item, idx) => (
+                                              <div key={idx} style={{
+                                                padding: '10px 14px', borderBottom: '1px solid #f8fafc',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                cursor: 'pointer'
+                                              }} onClick={() => setDetailItem({ item, diningId: r.id })}>
+                                                <div style={{ flex: 1 }}>
                                                   <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name_zh}</div>
-                                                  {item.name_original && <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>}
-                                                </div>
-                                                <div style={{ textAlign: 'right', fontSize: 13 }}>
-                                                  <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
-                                                  {item.price && (
-                                                    <div style={{ fontWeight: 600, color: '#f97316' }}>
-                                                      {item.quantity > 1 && (
-                                                        <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>¥{item.price}×{item.quantity}</span>
-                                                      )}
-                                                      ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                                                  {item.name_original && (
+                                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
+                                                  )}
+                                                  {item.memo && (
+                                                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>备注：{item.memo}</div>
+                                                  )}
+                                                  {(photos[`${r.id}-item-${item.id}`]?.length > 0) && (
+                                                    <div style={{ fontSize: 11, color: '#f97316', marginTop: 2 }}>
+                                                      📷 {photos[`${r.id}-item-${item.id}`].length} 张照片
                                                     </div>
                                                   )}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                  <div style={{ textAlign: 'right', fontSize: 13 }}>
+                                                    <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
+                                                    {item.price && (
+                                                      <div style={{ fontWeight: 600, color: '#f97316' }}>
+                                                        {item.quantity > 1 && (
+                                                          <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>
+                                                            ¥{item.price}×{item.quantity}
+                                                          </span>
+                                                        )}
+                                                        ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  <span style={{ fontSize: 16, color: '#94a3b8' }}>›</span>
                                                 </div>
                                               </div>
                                             ))}
@@ -963,6 +1161,18 @@ export default function DiningHistory() {
       )}
 
       {showAdd && <AddDiningModal onClose={() => setShowAdd(false)} onSaved={fetchRecords} />}
+        {detailItem && (
+  <DishDetailModal
+    item={detailItem.item}
+    diningId={detailItem.diningId}
+    photos={photos}
+    onAddPhotos={handleAddPhotos}
+    onDeletePhoto={handleDeletePhoto}
+    uploading={uploadingKey === `${detailItem.diningId}-item-${detailItem.item.id}`}
+    onClose={() => setDetailItem(null)}
+    onSaveMemo={handleSaveMemo}
+  />
+)}
       {editingRecord && (
         <EditDiningModal
           record={editingRecord}
