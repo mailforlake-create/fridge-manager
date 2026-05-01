@@ -141,10 +141,13 @@ function AddToDiningModal({ item, consumedQty, onClose }) {
   )
 }
 export default function IngredientCard({ item, onDelete, onUpdate }) {
-  const [editing, setEditing] = useState(false)
+   const [editing, setEditing] = useState(false)
   const [consuming, setConsuming] = useState(false)
   const [consumeQty, setConsumeQty] = useState(1)
   const [editingQty, setEditingQty] = useState(false)
+  const [addToDining, setAddToDining] = useState(true)      
+  const [diningDate, setDiningDate] = useState(new Date().toISOString().split('T')[0])  
+  const [diningMeal, setDiningMeal] = useState(null)  
   const [form, setForm] = useState({
     name_zh: item.name_zh,
     category: item.category || '',
@@ -155,8 +158,10 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     memo: item.memo || ''
   })
   const [saving, setSaving] = useState(false)
+
   const [showAddDining, setShowAddDining] = useState(false)
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
+
   const today = new Date()
   const expiry = item.expiry_date ? new Date(item.expiry_date) : null
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -345,9 +350,6 @@ async function consumeItem(all) {
   )
 
   const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
-  const [addToDining, setAddToDining] = useState(true)
-const [diningDate, setDiningDate] = useState(new Date().toISOString().split('T')[0])
-const [diningMeal, setDiningMeal] = useState(null)
 
       return (
         <div style={{
