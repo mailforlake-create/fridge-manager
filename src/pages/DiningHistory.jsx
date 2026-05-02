@@ -28,7 +28,8 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
     if (ingFilterStatus === 'consumed' && remaining > 0) return false
     if (ingFilterCategory && i.category !== ingFilterCategory) return false
     if (ingFilterStore && i.purchase_item?.purchase_history?.store_name !== ingFilterStore) return false
-    if (ingFilterDate && i.purchase_item?.purchase_history?.created_at < `${dateRanges[ingFilterDate]}T00:00:00`) return false
+    const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
+    if (ingFilterDate && (!purchasedAt || purchasedAt < dateRanges[ingFilterDate])) return false
     if (ingSearch && !i.name_zh?.includes(ingSearch) && !i.name_original?.includes(ingSearch)) return false
     return true
   })
@@ -71,9 +72,9 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
           <select style={{ ...smallField, flex: 1 }} value={ingFilterDate}
             onChange={e => { setIngFilterDate(e.target.value); setIngPage(0) }}>
             <option value="">全部日期</option>
-            <option value="3d">近3天入库</option>
-            <option value="7d">近一周入库</option>
-            <option value="30d">近一个月入库</option>
+            <option value="3d">小票近3天</option>
+            <option value="7d">小票近一周</option>
+            <option value="30d">小票近一个月</option>
           </select>
         </div>
       </div>
@@ -279,14 +280,17 @@ function EditDiningModal({ record, onClose, onSaved }) {
     if (record.dining_type === 'home') fetchIngredients()
   }, [])
 
-  async function fetchIngredients() {
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
-      .lte('created_at', `${record.dined_at}T23:59:59`)
-      .order('created_at', { ascending: false })
-    setIngredients(data || [])
-  }
+async function fetchIngredients() {
+  const { data } = await supabase
+    .from('ingredients')
+    .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+    .order('created_at', { ascending: false })
+  setIngredients((data || []).filter(i => {
+    const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
+    if (!purchasedAt) return true
+    return purchasedAt <= record.dined_at
+  }))
+}
 
   function calcCost(ing, qty) {
     const price = ing.purchase_item?.price
@@ -777,16 +781,20 @@ function AddDiningModal({ onClose, onSaved }) {
     if (diningType === 'home') fetchIngredients()
   }, [diningType, dinedAt])
 
-  async function fetchIngredients() {
-    setLoadingIng(true)
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
-      .lte('created_at', `${dinedAt}T23:59:59`)
-      .order('created_at', { ascending: false })
-    setIngredients(data || [])
-    setLoadingIng(false)
-  }
+async function fetchIngredients() {
+  setLoadingIng(true)
+  const { data } = await supabase
+    .from('ingredients')
+    .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+    .order('created_at', { ascending: false })
+  // 只保留小票日期 <= 餐食日期的食材（没有小票日期的也显示）
+  setIngredients((data || []).filter(i => {
+    const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
+    if (!purchasedAt) return true // 手动添加的没有小票日期，允许显示
+    return purchasedAt <= dinedAt
+  }))
+  setLoadingIng(false)
+}
 
   function calcCost(ing, qty) {
     const price = ing.purchase_item?.price
