@@ -3,6 +3,176 @@ import { supabase } from '../lib/supabase'
 import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 
+function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
+  const [ingSearch, setIngSearch] = useState('')
+  const [ingFilterStatus, setIngFilterStatus] = useState('active')
+  const [ingFilterCategory, setIngFilterCategory] = useState('')
+  const [ingFilterStore, setIngFilterStore] = useState('')
+  const [ingFilterDate, setIngFilterDate] = useState('')
+  const [ingPage, setIngPage] = useState(0)
+  const PAGE_SIZE = 8
+
+  const stores = [...new Set(ingredients.map(i => i.purchase_item?.purchase_history?.store_name).filter(Boolean))]
+  const categories = [...new Set(ingredients.map(i => i.category).filter(Boolean))]
+
+  const now = new Date(dinedAt)
+  const dateRanges = {
+    '3d': new Date(now.getTime() - 3 * 86400000).toISOString().split('T')[0],
+    '7d': new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0],
+    '30d': new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0],
+  }
+
+  const filteredIng = ingredients.filter(i => {
+    const remaining = (i.quantity || 0) - (i.consumed_quantity || 0)
+    if (ingFilterStatus === 'active' && remaining <= 0) return false
+    if (ingFilterStatus === 'consumed' && remaining > 0) return false
+    if (ingFilterCategory && i.category !== ingFilterCategory) return false
+    if (ingFilterStore && i.purchase_item?.purchase_history?.store_name !== ingFilterStore) return false
+    if (ingFilterDate && i.created_at < `${dateRanges[ingFilterDate]}T00:00:00`) return false
+    if (ingSearch && !i.name_zh?.includes(ingSearch) && !i.name_original?.includes(ingSearch)) return false
+    return true
+  })
+
+  const totalPages = Math.ceil(filteredIng.length / PAGE_SIZE)
+  const pagedIng = filteredIng.slice(ingPage * PAGE_SIZE, (ingPage + 1) * PAGE_SIZE)
+
+  function calcCost(ing, qty) {
+    const price = ing.purchase_item?.price
+    if (!price || !qty) return 0
+    return Math.round((price * qty / (ing.quantity || 1)) * 10) / 10
+  }
+
+  return (
+    <div>
+      {/* 过滤条件 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+        <input value={ingSearch} onChange={e => { setIngSearch(e.target.value); setIngPage(0) }}
+          placeholder="搜索食材..."
+          style={{ ...smallField }} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select style={{ ...smallField, flex: 1 }} value={ingFilterStatus}
+            onChange={e => { setIngFilterStatus(e.target.value); setIngPage(0) }}>
+            <option value="active">未食用完</option>
+            <option value="consumed">已食用完</option>
+            <option value="all">全部</option>
+          </select>
+          <select style={{ ...smallField, flex: 1 }} value={ingFilterCategory}
+            onChange={e => { setIngFilterCategory(e.target.value); setIngPage(0) }}>
+            <option value="">全部分类</option>
+            {categories.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select style={{ ...smallField, flex: 1 }} value={ingFilterStore}
+            onChange={e => { setIngFilterStore(e.target.value); setIngPage(0) }}>
+            <option value="">全部商家</option>
+            {stores.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select style={{ ...smallField, flex: 1 }} value={ingFilterDate}
+            onChange={e => { setIngFilterDate(e.target.value); setIngPage(0) }}>
+            <option value="">全部日期</option>
+            <option value="3d">近3天入库</option>
+            <option value="7d">近一周入库</option>
+            <option value="30d">近一个月入库</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>加载中...</div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {pagedIng.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>没有符合条件的食材</div>
+            )}
+            {pagedIng.map(ing => {
+              const remaining = (ing.quantity || 0) - (ing.consumed_quantity || 0)
+              const isSelected = !!selected[ing.id]
+              const sel = selected[ing.id]
+              const cost = isSelected ? calcCost(ing, sel?.qty || 1) : 0
+              const storeName = ing.purchase_item?.purchase_history?.store_name
+              const purchasedAt = ing.purchase_item?.purchase_history?.purchased_at
+
+              return (
+                <div key={ing.id} style={{
+                  background: isSelected ? '#f0fdf4' : '#f8fafc',
+                  border: `1.5px solid ${isSelected ? '#16a34a' : '#e2e8f0'}`,
+                  borderRadius: 10, padding: '9px 11px'
+                }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div onClick={() => {
+                      setSelected(s => {
+                        if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
+                        return { ...s, [ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false } }
+                      })
+                    }} style={{
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
+                      border: `2px solid ${isSelected ? '#16a34a' : '#cbd5e1'}`,
+                      background: isSelected ? '#16a34a' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {isSelected && <span style={{ color: '#fff', fontSize: 12 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{ing.name_zh}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
+                        {ing.category && `${ing.category} · `}
+                        剩余 {remaining}{ing.unit}
+                        {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}`}
+                      </div>
+                      {(storeName || purchasedAt) && (
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                          {storeName && `🏪 ${storeName}`}
+                          {purchasedAt && ` · 📅 ${purchasedAt}`}
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(0.1, parseFloat(((s[ing.id]?.qty || 1) - 1).toFixed(1))) } }))}
+                              style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                            <input type="number" step="0.1" value={sel?.qty || 1}
+                              onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
+                              style={{ width: 55, textAlign: 'center', padding: '3px 6px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none' }} />
+                            <span style={{ fontSize: 12, color: '#475569' }}>{ing.unit}</span>
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + 1).toFixed(1)) } }))}
+                              style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                            {cost > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
+                          </div>
+                          {remaining > 0 && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11, color: '#475569' }}>
+                              <input type="checkbox" checked={sel?.updateConsumed || false}
+                                onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], updateConsumed: e.target.checked } }))}
+                                style={{ width: 13, height: 13, accentColor: '#16a34a' }} />
+                              同步更新食用量
+                            </label>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+              <button onClick={() => setIngPage(p => Math.max(0, p - 1))} disabled={ingPage === 0}
+                style={{ padding: '5px 10px', borderRadius: 7, background: '#f1f5f9', color: ingPage === 0 ? '#cbd5e1' : '#475569', fontSize: 12 }}>← 上页</button>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{ingPage + 1}/{totalPages}（{filteredIng.length} 件）</span>
+              <button onClick={() => setIngPage(p => Math.min(totalPages - 1, p + 1))} disabled={ingPage >= totalPages - 1}
+                style={{ padding: '5px 10px', borderRadius: 7, background: '#f1f5f9', color: ingPage >= totalPages - 1 ? '#cbd5e1' : '#475569', fontSize: 12 }}>下页 →</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+
 const MEAL_TIMES = [
   { id: 'breakfast', label: '早餐', icon: '🌅' },
   { id: 'lunch', label: '午餐', icon: '☀️' },
@@ -104,9 +274,6 @@ function EditDiningModal({ record, onClose, onSaved }) {
   const [showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
   const [addSelected, setAddSelected] = useState({})
-  const [ingSearch, setIngSearch] = useState('')
-  const [ingPage, setIngPage] = useState(0)
-  const PAGE_SIZE = 6
 
   useEffect(() => {
     if (record.dining_type === 'home') fetchIngredients()
@@ -128,12 +295,6 @@ function EditDiningModal({ record, onClose, onSaved }) {
   }
 
   const existingIngIds = new Set(items.map(i => i.ingredient_id).filter(Boolean))
-  const filteredIng = ingredients.filter(i =>
-    !existingIngIds.has(i.id) &&
-    (i.name_zh?.includes(ingSearch) || !ingSearch)
-  )
-  const pagedIng = filteredIng.slice(ingPage * PAGE_SIZE, (ingPage + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(filteredIng.length / PAGE_SIZE)
 
   async function save() {
     setSaving(true)
@@ -327,59 +488,13 @@ function EditDiningModal({ record, onClose, onSaved }) {
 
               {showAddMore && (
                 <div style={{ marginTop: 8 }}>
-                  <input value={ingSearch} onChange={e => { setIngSearch(e.target.value); setIngPage(0) }}
-                    placeholder="搜索食材..."
-                    style={{ ...smallField, marginBottom: 8 }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {pagedIng.map(ing => {
-                      const remaining = (ing.quantity || 0) - (ing.consumed_quantity || 0)
-                      const isSelected = !!addSelected[ing.id]
-                      const sel = addSelected[ing.id]
-                      return (
-                        <div key={ing.id} style={{
-                          background: isSelected ? '#f0fdf4' : '#f8fafc',
-                          border: `1.5px solid ${isSelected ? '#16a34a' : '#e2e8f0'}`,
-                          borderRadius: 9, padding: '8px 10px'
-                        }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <div onClick={() => setAddSelected(s => {
-                              if (s[ing.id]) { const n={...s}; delete n[ing.id]; return n }
-                              return { ...s, [ing.id]: { qty: remaining > 0 ? 1 : 1 } }
-                            })} style={{
-                              width: 20, height: 20, borderRadius: 5, flexShrink: 0, cursor: 'pointer',
-                              border: `2px solid ${isSelected ? '#16a34a' : '#cbd5e1'}`,
-                              background: isSelected ? '#16a34a' : 'transparent',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                              {isSelected && <span style={{ color: '#fff', fontSize: 12 }}>✓</span>}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13 }}>{ing.name_zh}</div>
-                              <div style={{ fontSize: 11, color: '#94a3b8' }}>剩余 {remaining}{ing.unit}</div>
-                            </div>
-                            {isSelected && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <button onClick={() => setAddSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(0.1, parseFloat(((s[ing.id]?.qty||1)-1).toFixed(1))) } }))}
-                                  style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                <span style={{ fontSize: 13, fontWeight: 600, minWidth: 32, textAlign: 'center' }}>{sel?.qty || 1}{ing.unit}</span>
-                                <button onClick={() => setAddSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty||1)+1).toFixed(1)) } }))}
-                                  style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {totalPages > 1 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                      <button onClick={() => setIngPage(p => Math.max(0, p-1))} disabled={ingPage === 0}
-                        style={{ padding: '4px 10px', borderRadius: 6, background: '#f1f5f9', color: ingPage===0?'#cbd5e1':'#475569', fontSize: 12 }}>← 上页</button>
-                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{ingPage+1}/{totalPages}</span>
-                      <button onClick={() => setIngPage(p => Math.min(totalPages-1, p+1))} disabled={ingPage>=totalPages-1}
-                        style={{ padding: '4px 10px', borderRadius: 6, background: '#f1f5f9', color: ingPage>=totalPages-1?'#cbd5e1':'#475569', fontSize: 12 }}>下页 →</button>
-                    </div>
-                  )}
+                  <IngredientPicker
+                    dinedAt={record.dined_at}
+                    selected={addSelected}
+                    setSelected={setAddSelected}
+                    ingredients={ingredients.filter(i => !existingIngIds.has(i.id))}
+                    loading={false}
+                  />
                 </div>
               )}
             </div>
@@ -803,29 +918,6 @@ function AddDiningModal({ onClose, onSaved }) {
     onClose()
   }
 
-  // 食材过滤 state
-  const [ingSearch, setIngSearch] = useState('')
-  const [ingFilterStatus, setIngFilterStatus] = useState('active') // active | consumed | all
-  const [ingFilterCategory, setIngFilterCategory] = useState('')
-  const [ingFilterStore, setIngFilterStore] = useState('')
-  const [ingPage, setIngPage] = useState(0)
-  const PAGE_SIZE = 8
-
-  const stores = [...new Set(ingredients.map(i => i.purchase_item?.purchase_history?.store_name).filter(Boolean))]
-  const categories = [...new Set(ingredients.map(i => i.category).filter(Boolean))]
-
-  const filteredIng = ingredients.filter(i => {
-    const remaining = (i.quantity || 0) - (i.consumed_quantity || 0)
-    if (ingFilterStatus === 'active' && remaining <= 0) return false
-    if (ingFilterStatus === 'consumed' && remaining > 0) return false
-    if (ingFilterCategory && i.category !== ingFilterCategory) return false
-    if (ingFilterStore && i.purchase_item?.purchase_history?.store_name !== ingFilterStore) return false
-    if (ingSearch && !i.name_zh?.includes(ingSearch) && !i.name_original?.includes(ingSearch)) return false
-    return true
-  })
-
-  const totalPages = Math.ceil(filteredIng.length / PAGE_SIZE)
-  const pagedIng = filteredIng.slice(ingPage * PAGE_SIZE, (ingPage + 1) * PAGE_SIZE)
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
@@ -884,125 +976,13 @@ function AddDiningModal({ onClose, onSaved }) {
                 </span>
               )}
             </div>
-
-            {/* 过滤条件 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              <input value={ingSearch} onChange={e => { setIngSearch(e.target.value); setIngPage(0) }}
-                placeholder="搜索食材..."
-                style={{ ...smallField }} />
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select style={{ ...smallField, flex: 1 }} value={ingFilterStatus}
-                  onChange={e => { setIngFilterStatus(e.target.value); setIngPage(0) }}>
-                  <option value="active">未食用完</option>
-                  <option value="consumed">已食用完</option>
-                  <option value="all">全部</option>
-                </select>
-                <select style={{ ...smallField, flex: 1 }} value={ingFilterCategory}
-                  onChange={e => { setIngFilterCategory(e.target.value); setIngPage(0) }}>
-                  <option value="">全部分类</option>
-                  {categories.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <select style={smallField} value={ingFilterStore}
-                onChange={e => { setIngFilterStore(e.target.value); setIngPage(0) }}>
-                <option value="">全部商家</option>
-                {stores.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-
-            {loadingIng ? (
-              <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 13 }}>加载中...</div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {pagedIng.map(ing => {
-                    const remaining = (ing.quantity || 0) - (ing.consumed_quantity || 0)
-                    const isSelected = !!homeSelected[ing.id]
-                    const sel = homeSelected[ing.id]
-                    const cost = isSelected ? calcCost(ing, sel?.qty || 1) : 0
-                    const storeName = ing.purchase_item?.purchase_history?.store_name
-                    const purchasedAt = ing.purchase_item?.purchase_history?.purchased_at
-
-                    return (
-                      <div key={ing.id} style={{
-                        background: isSelected ? '#f0fdf4' : '#f8fafc',
-                        border: `1.5px solid ${isSelected ? '#16a34a' : '#e2e8f0'}`,
-                        borderRadius: 10, padding: '9px 11px'
-                      }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                          <div onClick={() => {
-                            setHomeSelected(s => {
-                              if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
-                              return { ...s, [ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false } }
-                            })
-                          }} style={{
-                            width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
-                            border: `2px solid ${isSelected ? '#16a34a' : '#cbd5e1'}`,
-                            background: isSelected ? '#16a34a' : 'transparent',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}>
-                            {isSelected && <span style={{ color: '#fff', fontSize: 12 }}>✓</span>}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{ing.name_zh}</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
-                              {ing.category && `${ing.category} · `}
-                              剩余 {remaining}{ing.unit}
-                              {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}`}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                              {storeName && `🏪 ${storeName}`}
-                              {purchasedAt && ` · 📅 ${purchasedAt}`}
-                            </div>
-
-                            {isSelected && (
-                              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <button onClick={() => setHomeSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(0.1, parseFloat(((s[ing.id]?.qty || 1) - 1).toFixed(1))) } }))}
-                                    style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                                  <input type="number" step="0.1" value={sel?.qty || 1}
-                                    onChange={e => setHomeSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
-                                    style={{ width: 55, textAlign: 'center', padding: '3px 6px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none' }} />
-                                  <span style={{ fontSize: 12, color: '#475569' }}>{ing.unit}</span>
-                                  <button onClick={() => setHomeSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + 1).toFixed(1)) } }))}
-                                    style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-                                  {cost > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
-                                </div>
-                                {remaining > 0 && (
-                                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11, color: '#475569' }}>
-                                    <input type="checkbox" checked={sel?.updateConsumed || false}
-                                      onChange={e => setHomeSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], updateConsumed: e.target.checked } }))}
-                                      style={{ width: 13, height: 13, accentColor: '#16a34a' }} />
-                                    同步更新食用量
-                                  </label>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* 分页 */}
-                {totalPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-                    <button onClick={() => setIngPage(p => Math.max(0, p - 1))} disabled={ingPage === 0}
-                      style={{ padding: '5px 12px', borderRadius: 7, background: ingPage === 0 ? '#f1f5f9' : '#e2e8f0', color: ingPage === 0 ? '#cbd5e1' : '#475569', fontSize: 13 }}>
-                      ← 上一页
-                    </button>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                      {ingPage + 1} / {totalPages}（共 {filteredIng.length} 件）
-                    </span>
-                    <button onClick={() => setIngPage(p => Math.min(totalPages - 1, p + 1))} disabled={ingPage >= totalPages - 1}
-                      style={{ padding: '5px 12px', borderRadius: 7, background: ingPage >= totalPages - 1 ? '#f1f5f9' : '#e2e8f0', color: ingPage >= totalPages - 1 ? '#cbd5e1' : '#475569', fontSize: 13 }}>
-                      下一页 →
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+            <IngredientPicker
+              dinedAt={dinedAt}
+              selected={homeSelected}
+              setSelected={setHomeSelected}
+              ingredients={ingredients}
+              loading={loadingIng}
+            />
           </div>
         )}
 
@@ -1146,6 +1126,7 @@ export default function DiningHistory() {
   const [selectingIngredients, setSelectingIngredients] = useState(null) // { diningId, dinedAt, mealTime, existingItems }
   const [photos, setPhotos] = useState({})
   const [uploadingKey, setUploadingKey] = useState(null)
+  const [filterType, setFilterType] = useState('all') // all | home | out
 
   useEffect(() => { fetchRecords() }, [])
 
@@ -1217,6 +1198,7 @@ export default function DiningHistory() {
   }
 
   const filtered = records.filter(r => {
+    if (filterType !== 'all' && r.dining_type !== filterType) return false
     if (!search) return true
     const s = search.toLowerCase()
     return r.store_name?.toLowerCase().includes(s) ||
@@ -1253,7 +1235,22 @@ export default function DiningHistory() {
           style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
         {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>}
       </div>
-
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+        gap: 5, marginBottom: 14,
+        background: '#f1f5f9', borderRadius: 10, padding: 3
+      }}>
+        {[['all','全部'],['home','🍳 自炊'],['out','🍽️ 外食']].map(([id, label]) => (
+          <button key={id} onClick={() => setFilterType(id)} style={{
+            padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            background: filterType === id ? '#fff' : 'transparent',
+            color: filterType === id
+              ? (id === 'home' ? '#16a34a' : id === 'out' ? '#f97316' : '#334155')
+              : '#94a3b8',
+            boxShadow: filterType === id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+          }}>{label}</button>
+        ))}
+      </div>
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
       ) : filtered.length === 0 ? (
