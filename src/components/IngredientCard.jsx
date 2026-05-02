@@ -141,7 +141,9 @@ function AddToDiningModal({ item, consumedQty, onClose }) {
   )
 }
 export default function IngredientCard({ item, onDelete, onUpdate }) {
-   const [editing, setEditing] = useState(false)
+  const [syncPurchase, setSyncPurchase] = useState(true)
+  const [syncDining, setSyncDining] = useState(true)
+  const [editing, setEditing] = useState(false)
   const [consuming, setConsuming] = useState(false)
   const [consumeQty, setConsumeQty] = useState(1)
   const [editingQty, setEditingQty] = useState(false)
@@ -251,29 +253,41 @@ async function consumeItem(all) {
   setDiningMeal(null)
 }
 
-  async function saveEdit() {
-    setSaving(true)
-    const updates = {
-      ...form,
-      quantity: Number(form.quantity) || 1,
-      expiry_date: form.expiry_date || null
-    }
-    await supabase.from('ingredients').update(updates).eq('id', item.id)
-    if (item.purchase_item_id) {
-      await supabase.from('purchase_items').update({
-        name_zh: form.name_zh,
-        category: form.category,
-        quantity: Number(form.quantity) || 1,
-        unit: form.unit,
-        expiry_date: form.expiry_date || null,
-        memo: form.memo || null,
-        location: form.location,
-      }).eq('id', item.purchase_item_id)
-    }
-    onUpdate({ ...item, ...updates })
-    setSaving(false)
-    setEditing(false)
+async function saveEdit() {
+  setSaving(true)
+  const updates = {
+    ...form,
+    quantity: Number(form.quantity) || 1,
+    expiry_date: form.expiry_date || null
   }
+  await supabase.from('ingredients').update(updates).eq('id', item.id)
+
+  // 同步到购物履历
+  if (syncPurchase && item.purchase_item_id) {
+    await supabase.from('purchase_items').update({
+      name_zh: form.name_zh,
+      category: form.category || null,
+      quantity: Number(form.quantity) || 1,
+      unit: form.unit,
+      expiry_date: form.expiry_date || null,
+      memo: form.memo || null,
+    }).eq('id', item.purchase_item_id)
+  }
+
+  // 同步到自炊履历（按 ingredient_id 匹配）
+  if (syncDining) {
+    await supabase.from('dining_items').update({
+      name_zh: form.name_zh,
+      category: form.category || null,
+      unit: form.unit,
+      memo: form.memo || null,
+    }).eq('ingredient_id', item.id)
+  }
+
+  onUpdate({ ...item, ...updates })
+  setSaving(false)
+  setEditing(false)
+}
 
   const field = {
     width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 14,
@@ -334,6 +348,19 @@ async function consumeItem(all) {
               fontWeight: form.location === v ? 600 : 400
             }}>{l}</button>
           ))}
+        </div>
+        <div style={{ background: '#f8fafc', borderRadius: 9, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginBottom: 2 }}>同步更新</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569' }}>
+            <input type="checkbox" checked={syncPurchase} onChange={e => setSyncPurchase(e.target.checked)}
+              style={{ width: 14, height: 14, accentColor: '#16a34a' }} />
+            同步到购物履历
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569' }}>
+            <input type="checkbox" checked={syncDining} onChange={e => setSyncDining(e.target.checked)}
+              style={{ width: 14, height: 14, accentColor: '#16a34a' }} />
+            同步到自炊履历
+          </label>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setEditing(false)} style={{

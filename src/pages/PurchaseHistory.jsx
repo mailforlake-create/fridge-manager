@@ -599,6 +599,8 @@ export default function PurchaseHistory() {
   const [showReceiptScan, setShowReceiptScan] = useState(false)
   const [collapsedYears, setCollapsedYears] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
+  const [syncToIngredients, setSyncToIngredients] = useState(true)
+  const [syncToDining, setSyncToDining] = useState(true)
   useEffect(() => { fetchHistory() }, [])
 
   async function fetchHistory() {
@@ -668,53 +670,62 @@ export default function PurchaseHistory() {
   }
 
   function confirmSaveItem(item) {
-    const orig = editingItem
-    if (item.add_to_fridge) {
-      setConfirm({
-        title: `保存「${item.name_zh}」的修改`,
-        message: '同时更新冰箱中的对应食材（含过期日期、备注）？',
-        onYes: () => saveItemEdit(orig.historyId, item, true),
-        onNo: () => saveItemEdit(orig.historyId, item, false),
-        onCancel: () => setConfirm(null)
-      })
-    } else {
-      saveItemEdit(orig.historyId, item, false)
-    }
+    saveItemEdit(editingItem.historyId, item)
   }
 
   async function saveItemEdit(historyId, item, alsoFridge) {
-    setConfirm(null)
-    await supabase.from('purchase_items').update({
+  setConfirm(null)
+  await supabase.from('purchase_items').update({
+    name_zh: item.name_zh,
+    name_original: item.name_original,
+    category: item.category,
+    quantity: Number(item.quantity) || 1,
+    unit: item.unit,
+    price: item.price || null,
+    original_price: item.original_price || null,
+    is_discount: item.is_discount,
+    discount_info: item.discount_info || null,
+    expiry_date: item.expiry_date || null,
+    memo: item.memo || null,
+  }).eq('id', item.id)
+
+  // 同步到物品库存（按 purchase_item_id 匹配）
+  if (syncToIngredients) {
+    await supabase.from('ingredients').update({
       name_zh: item.name_zh,
-      name_original: item.name_original,
       category: item.category,
       quantity: Number(item.quantity) || 1,
       unit: item.unit,
-      price: item.price || null,
-      original_price: item.original_price || null,
-      is_discount: item.is_discount,
-      discount_info: item.discount_info || null,
       expiry_date: item.expiry_date || null,
       memo: item.memo || null,
-    }).eq('id', item.id)
-
-    if (alsoFridge) {
-      await supabase.from('ingredients').update({
-        name_zh: item.name_zh,
-        category: item.category,
-        quantity: Number(item.quantity) || 1,
-        unit: item.unit,
-        expiry_date: item.expiry_date || null,
-        memo: item.memo || null,
-      }).eq('name_zh', editingItem.original_name_zh)
-    }
-
-    setHistory(history.map(h => h.id === historyId
-      ? { ...h, purchase_items: h.purchase_items.map(i => i.id === item.id ? item : i) }
-      : h
-    ))
-    setEditingItem(null)
+    }).eq('purchase_item_id', item.id)
   }
+
+  // 同步到自炊履历（通过 ingredients 找 ingredient_id）
+  if (syncToDining) {
+    // 先找关联的 ingredient id
+    const { data: ings } = await supabase
+      .from('ingredients')
+      .select('id')
+      .eq('purchase_item_id', item.id)
+    if (ings?.length) {
+      for (const ing of ings) {
+        await supabase.from('dining_items').update({
+          name_zh: item.name_zh,
+          category: item.category,
+          unit: item.unit,
+          memo: item.memo || null,
+        }).eq('ingredient_id', ing.id)
+      }
+    }
+  }
+
+  setHistory(history.map(h => h.id === historyId
+    ? { ...h, purchase_items: h.purchase_items.map(i => i.id === item.id ? item : i) }
+    : h
+  ))
+  setEditingItem(null)
+}
 
   // ── 过滤 + 按年/月分组 ───────────────────────────────────────
 
@@ -826,40 +837,7 @@ export default function PurchaseHistory() {
               onSaved={fetchHistory}
             />
           )}
-          {/* 确认弹窗 */}
-          {detailItem && <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
-          {confirm && (
-            <div style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 1000, padding: 24
-            }}>
-              <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{confirm.title}</div>
-                {confirm.message && (
-                  <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>{confirm.message}</div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {confirm.onYes && (
-                    <button onClick={confirm.onYes} style={{
-                      padding: '11px 0', borderRadius: 10, background: '#ef4444',
-                      color: '#fff', fontSize: 15, fontWeight: 700
-                    }}>是，同步操作冰箱</button>
-                  )}
-                  {(confirm.onNo || confirm.onConfirm) && (
-                    <button onClick={confirm.onNo || confirm.onConfirm} style={{
-                      padding: '11px 0', borderRadius: 10, background: '#f1f5f9',
-                      color: '#475569', fontSize: 15, fontWeight: 600
-                    }}>{confirm.onYes ? '否，仅操作履历' : '确认删除'}</button>
-                  )}
-                  <button onClick={confirm.onCancel} style={{
-                    padding: '11px 0', borderRadius: 10, background: '#fff',
-                    color: '#94a3b8', fontSize: 14, border: '1px solid #e2e8f0'
-                  }}>取消</button>
-                </div>
-              </div>
-            </div>
-          )}
+         
 
           {/* 编辑履历头部弹窗 */}
           {editingHistory && (
@@ -1025,6 +1003,16 @@ export default function PurchaseHistory() {
                     </div>
                   </div>
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569' }}>
+                  <input type="checkbox" checked={syncToIngredients} onChange={e => setSyncToIngredients(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: '#16a34a' }} />
+                  同步到物品库存
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569' }}>
+                  <input type="checkbox" checked={syncToDining} onChange={e => setSyncToDining(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: '#16a34a' }} />
+                  同步到自炊履历
+                </label>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <button onClick={() => setEditingItem(null)} style={{
                     flex: 1, padding: '11px 0', borderRadius: 10,
