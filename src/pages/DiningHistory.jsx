@@ -28,7 +28,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
     if (ingFilterStatus === 'consumed' && remaining > 0) return false
     if (ingFilterCategory && i.category !== ingFilterCategory) return false
     if (ingFilterStore && i.purchase_item?.purchase_history?.store_name !== ingFilterStore) return false
-    if (ingFilterDate && i.created_at < `${dateRanges[ingFilterDate]}T00:00:00`) return false
+    if (ingFilterDate && i.purchase_item?.purchase_history?.created_at < `${dateRanges[ingFilterDate]}T00:00:00`) return false
     if (ingSearch && !i.name_zh?.includes(ingSearch) && !i.name_original?.includes(ingSearch)) return false
     return true
   })

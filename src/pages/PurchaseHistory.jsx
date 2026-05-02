@@ -72,9 +72,6 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
-  const ALL_CATS = [...FOOD_CATEGORIES, ...DAILY_CATEGORIES]
-
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
     border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
@@ -130,6 +127,11 @@ function ReceiptScanModal({ onClose, onSaved }) {
           expiry_date: item.expiry_date || null,
           memo: item.memo || null,
         }))
+        
+        // --- BUG FIX STARTS HERE ---
+        const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
+        // --- BUG FIX ENDS HERE ---
+
         // 建立 index → purchase_item_id 的映射
         const purchaseItemMap = {}
         aiItems.forEach((item, i) => {
@@ -329,9 +331,6 @@ function ManualReceiptModal({ onClose, onSaved }) {
   }])
   const [saving, setSaving] = useState(false)
 
-  const UNITS = ['个','包','瓶','袋','克','毫升','升','根','片','块']
-  const CATEGORIES = ['蔬菜','水果','肉类','海鲜','乳制品','饮料','调味料','冷冻食品','零食','其他','非食材']
-
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
     border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
@@ -521,13 +520,13 @@ function ManualReceiptModal({ onClose, onSaved }) {
                   <select style={{ ...smallField, flex: 2 }} value={item.category}
                     onChange={e => setItemField(i, 'category', e.target.value)}>
                     <option value="">分类</option>
-                      <optgroup label="食用品">
-                        {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                      </optgroup>
-                      <optgroup label="非食用品">
-                        {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                      </optgroup>
-                      <option value="非食材">非食材（不入库）</option>
+                    <optgroup label="食用品">
+                      {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </optgroup>
+                    <optgroup label="非食用品">
+                      {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </optgroup>
+                    <option value="非食材">非食材（不入库）</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -717,7 +716,7 @@ export default function PurchaseHistory() {
     setEditingItem(null)
   }
 
-  // ── 过滤 + 按月分组 ───────────────────────────────────────
+  // ── 过滤 + 按年/月分组 ───────────────────────────────────────
 
   const filteredHistory = history.map(h => {
     if (!search) return { ...h, matchedItems: null }
@@ -769,7 +768,6 @@ export default function PurchaseHistory() {
       {mainTab === 'dining' && <DiningHistory />}
 
       {mainTab === 'purchase' && (
-        
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
             <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧾 购物履历</h1>
@@ -1145,11 +1143,11 @@ export default function PurchaseHistory() {
                                                   <div style={{ flex: 1 }}>
                                                     <div style={{ fontSize: 14, fontWeight: 500, color: item.category === '非食材' ? '#94a3b8' : '#1e293b' }}>
                                                       {item.name_zh}
-                                                     {item.add_to_fridge && !isConsumed && (
+                                                      {item.add_to_fridge && !isConsumed && (
                                                         <span style={{ fontSize: 11, color: isDailyCategory(item.category) ? '#3b82f6' : '#16a34a', marginLeft: 6 }}>已入库</span>
                                                       )}
                                                       {isConsumed && (
-                                                        <span style={{ fontSize: 11, color: isDailyCategory(item.category) ? '#3b82f6' : '#16a34a', marginLeft: 6 }}>
+                                                        <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
                                                           {isDailyCategory(item.category) ? '已用完' : '已食用'}
                                                         </span>
                                                       )}
