@@ -1357,12 +1357,6 @@ export default function DiningHistory() {
                                               {r.memo && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>备注：{r.memo}</div>}
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                              {r.dining_type === 'home' && (
-                                                <button onClick={() => setSelectingIngredients({ diningId: r.id, dinedAt: r.dined_at, mealTime: r.meal_time, existingItems: r.dining_items })}
-                                                  style={{ background: '#f0fdf4', color: '#16a34a', fontSize: 12, padding: '5px 8px', borderRadius: 7, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                                  选食材
-                                                </button>
-                                              )}
                                               <button onClick={() => setEditingRecord(r)} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
                                               <button onClick={() => deleteRecord(r.id)} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
                                               <div onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))} style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>

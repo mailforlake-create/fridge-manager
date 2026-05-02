@@ -166,7 +166,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             background: consuming ? '#f1f5f9' : '#dbeafe',
             color: consuming ? '#475569' : '#1d4ed8'
           }}>
-          {consuming ? '取消' : '已使用'}
+          {consuming ? '取消' : '使用'}
         </button>
       </div>
 
