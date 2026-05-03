@@ -404,25 +404,49 @@ function ManualReceiptModal({ onClose, onSaved }) {
       if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
 
       // 入库到 ingredients
-      const fridgeItems = validItems.filter(item =>
-        item.add_to_fridge && item.category !== '非食材'
-      )
-
-      for (const item of fridgeItems) {
-        const savedItem = savedItems?.find(s => s.name_zh === item.name_zh)
-        const { error: ingError } = await supabase.from('ingredients').insert({
-          name_zh: item.name_zh,
-          name_original: item.name_original || null,
-          category: item.category || null,
-          quantity: Number(item.quantity) || 1,
-          unit: item.unit || '个',
-          expiry_date: item.expiry_date || null,
-          memo: item.memo || null,
-          location: 'fridge',
-          purchase_item_id: savedItem?.id || null
+      // 按 index 建立 purchase_item_id 映射
+        const purchaseItemMap = {}
+        validItems.forEach((item, i) => {
+          const savedItem = savedItems?.[i]
+          if (savedItem) purchaseItemMap[i] = savedItem.id
         })
-        if (ingError) console.error('入库失败：', item.name_zh, ingError)
-      }
+
+        // 入库到食用品
+        const foodItems = validItems.map((item, i) => ({ item, i }))
+          .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
+        for (const { item, i } of foodItems) {
+          await supabase.from('ingredients').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            expiry_date: item.expiry_date || null,
+            memo: item.memo || null,
+            location: 'fridge',
+            purchase_item_id: purchaseItemMap[i] || null
+          })
+        }
+
+        // 入库到非食用品
+        const dailyItems = validItems.map((item, i) => ({ item, i }))
+          .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
+        for (const { item, i } of dailyItems) {
+          const savedItemId = purchaseItemMap[i] || null
+          await supabase.from('daily_items').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            memo: item.memo || null,
+            location: 'home',
+            purchase_item_id: savedItemId
+          })
+          if (savedItemId) {
+            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
+          }
+        }
 
       console.log('保存成功')
       onSaved()
@@ -560,11 +584,22 @@ function ManualReceiptModal({ onClose, onSaved }) {
                 <input style={smallField} value={item.memo}
                   onChange={e => setItemField(i, 'memo', e.target.value)}
                   placeholder="备注（可选）" />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <input type="checkbox" checked={item.add_to_fridge}
                     onChange={e => setItemField(i, 'add_to_fridge', e.target.checked)}
                     style={{ width: 15, height: 15, accentColor: '#16a34a' }} />
-                  <span style={{ fontSize: 12, color: '#475569' }}>入库到物品</span>
+                  <span style={{ fontSize: 12, color: '#475569' }}>入库</span>
+                  {item.add_to_fridge && (
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[['food','食用品'],['daily','非食用品']].map(([v, l]) => (
+                        <button key={v} onClick={() => setItemField(i, 'stock_type', v)} style={{
+                          padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                          background: (item.stock_type || 'food') === v ? (v === 'food' ? '#16a34a' : '#3b82f6') : '#f1f5f9',
+                          color: (item.stock_type || 'food') === v ? '#fff' : '#94a3b8'
+                        }}>{l}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -587,6 +622,8 @@ function ManualReceiptModal({ onClose, onSaved }) {
 }
 
 export default function PurchaseHistory() {
+  const [showAddItems, setShowAddItems] = useState(false)
+  const [newItems, setNewItems] = useState([])
   const [showManualAdd, setShowManualAdd] = useState(false)
   const [history, setHistory] = useState([])
   const [expanded, setExpanded] = useState({})
@@ -659,6 +696,7 @@ export default function PurchaseHistory() {
   }
 
   async function saveHistoryEdit() {
+ 
     await supabase.from('purchase_history').update({
       store_name: editingHistory.store_name,
       store_name_original: editingHistory.store_name_original,
@@ -667,6 +705,86 @@ export default function PurchaseHistory() {
     }).eq('id', editingHistory.id)
     setHistory(history.map(h => h.id === editingHistory.id ? { ...h, ...editingHistory } : h))
     setEditingHistory(null)
+    setShowAddItems(false)
+    setNewItems([])
+
+       async function saveHistoryEdit() {
+    await supabase.from('purchase_history').update({
+      store_name: editingHistory.store_name,
+      store_name_original: editingHistory.store_name_original,
+      purchased_at: editingHistory.purchased_at || null,
+      total_amount: editingHistory.total_amount !== '' && editingHistory.total_amount != null
+        ? Number(editingHistory.total_amount) : null
+    }).eq('id', editingHistory.id)
+
+    // 保存追加商品
+    if (showAddItems && newItems.length > 0) {
+      const validNew = newItems.filter(item => item.name_zh.trim())
+      if (validNew.length > 0) {
+        const historyItems = validNew.map(item => ({
+          history_id: editingHistory.id,
+          name_zh: item.name_zh,
+          name_original: item.name_original || null,
+          category: item.category || null,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '个',
+          price: item.price !== '' ? Number(item.price) : null,
+          original_price: item.original_price !== '' ? Number(item.original_price) : null,
+          is_discount: item.is_discount,
+          discount_info: item.discount_info || null,
+          expiry_date: item.expiry_date || null,
+          memo: item.memo || null,
+          add_to_fridge: item.add_to_fridge && item.stock_type !== 'none',
+        }))
+
+        const { data: savedItems } = await supabase
+          .from('purchase_items').insert(historyItems).select()
+
+        // 入库食用品
+        const foodItems = validNew.map((item, i) => ({ item, i }))
+          .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
+        for (const { item, i } of foodItems) {
+          await supabase.from('ingredients').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            expiry_date: item.expiry_date || null,
+            memo: item.memo || null,
+            location: 'fridge',
+            purchase_item_id: savedItems?.[i]?.id || null
+          })
+        }
+
+        // 入库非食用品
+        const dailyItems = validNew.map((item, i) => ({ item, i }))
+          .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
+        for (const { item, i } of dailyItems) {
+          const savedItemId = savedItems?.[i]?.id || null
+          await supabase.from('daily_items').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            memo: item.memo || null,
+            location: 'home',
+            purchase_item_id: savedItemId
+          })
+          if (savedItemId) {
+            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
+          }
+        }
+      }
+    }
+
+    setHistory(history.map(h => h.id === editingHistory.id ? { ...h, ...editingHistory } : h))
+    setEditingHistory(null)
+    setShowAddItems(false)
+    setNewItems([])
+    fetchHistory() // 刷新以显示新追加的商品
+  }
   }
 
   function confirmSaveItem(item) {
@@ -871,6 +989,126 @@ export default function PurchaseHistory() {
                     <input style={smallField} type="number" value={editingHistory.total_amount || ''}
                       onChange={e => setEditingHistory(h => ({ ...h, total_amount: e.target.value }))} />
                   </div>
+                </div>
+                {/* 追加商品 */}
+                <div style={{ marginTop: 4 }}>
+                  <button onClick={() => {
+                    setShowAddItems(!showAddItems)
+                    if (!showAddItems && newItems.length === 0) {
+                      setNewItems([{
+                        name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
+                        price: '', original_price: '', is_discount: false, discount_info: '',
+                        expiry_date: '', memo: '', add_to_fridge: true, stock_type: 'food'
+                      }])
+                    }
+                  }} style={{
+                    width: '100%', padding: '8px 0', borderRadius: 9, fontSize: 13, fontWeight: 600,
+                    background: '#f0fdf4', color: '#16a34a', border: '1px dashed #86efac'
+                  }}>
+                    {showAddItems ? '收起追加商品' : '+ 追加商品'}
+                  </button>
+
+                  {showAddItems && (
+                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {newItems.map((item, i) => (
+                        <div key={i} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px', border: '1.5px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>商品 {i + 1}</div>
+                            {newItems.length > 1 && (
+                              <button onClick={() => setNewItems(items => items.filter((_, j) => j !== i))}
+                                style={{ background: '#fef2f2', color: '#ef4444', fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>删除</button>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <input style={{ ...smallField, flex: 2 }} value={item.name_zh}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],name_zh:e.target.value}; return n })}
+                                placeholder="商品名称（中文）" />
+                              <input style={{ ...smallField, flex: 1 }} value={item.name_original}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],name_original:e.target.value}; return n })}
+                                placeholder="原文" />
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <input style={{ ...smallField, flex: 1, textAlign: 'center' }} type="number"
+                                value={item.quantity}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],quantity:e.target.value}; return n })} />
+                              <select style={{ ...smallField, flex: 1 }} value={item.unit}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],unit:e.target.value}; return n })}>
+                                {UNITS.map(u => <option key={u}>{u}</option>)}
+                              </select>
+                              <select style={{ ...smallField, flex: 2 }} value={item.category}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],category:e.target.value}; return n })}>
+                                <option value="">分类</option>
+                                <optgroup label="食用品">
+                                  {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                                </optgroup>
+                                <optgroup label="非食用品">
+                                  {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                                </optgroup>
+                                <option value="非食材">非食材</option>
+                              </select>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>实付价格</div>
+                                <input style={smallField} type="number" value={item.price}
+                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],price:e.target.value}; return n })} placeholder="¥" />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>原价</div>
+                                <input style={smallField} type="number" value={item.original_price}
+                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],original_price:e.target.value}; return n })} placeholder="¥" />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <input type="checkbox" checked={item.is_discount}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],is_discount:e.target.checked}; return n })}
+                                style={{ width: 14, height: 14, accentColor: '#ef4444' }} />
+                              <span style={{ fontSize: 12, color: '#475569' }}>折扣商品</span>
+                              {item.is_discount && (
+                                <input style={{ ...smallField, flex: 1 }} value={item.discount_info}
+                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],discount_info:e.target.value}; return n })}
+                                  placeholder="折扣说明" />
+                              )}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>过期日期</div>
+                              <input style={smallField} type="date" value={item.expiry_date}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],expiry_date:e.target.value}; return n })} />
+                            </div>
+                            <input style={smallField} value={item.memo}
+                              onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],memo:e.target.value}; return n })}
+                              placeholder="备注（可选）" />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <input type="checkbox" checked={item.add_to_fridge}
+                                onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],add_to_fridge:e.target.checked}; return n })}
+                                style={{ width: 14, height: 14, accentColor: '#16a34a' }} />
+                              <span style={{ fontSize: 12, color: '#475569' }}>入库</span>
+                              {item.add_to_fridge && (
+                                <div style={{ display: 'flex', gap: 5 }}>
+                                  {[['food','食用品'],['daily','非食用品']].map(([v, l]) => (
+                                    <button key={v} onClick={() => setNewItems(items => { const n=[...items]; n[i]={...n[i],stock_type:v}; return n })} style={{
+                                      padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                      background: (item.stock_type || 'food') === v ? (v === 'food' ? '#16a34a' : '#3b82f6') : '#f1f5f9',
+                                      color: (item.stock_type || 'food') === v ? '#fff' : '#94a3b8'
+                                    }}>{l}</button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={() => setNewItems(i => [...i, {
+                        name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
+                        price: '', original_price: '', is_discount: false, discount_info: '',
+                        expiry_date: '', memo: '', add_to_fridge: true, stock_type: 'food'
+                      }])} style={{
+                        width: '100%', padding: '8px 0', borderRadius: 9,
+                        background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600
+                      }}>+ 再添加一件</button>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <button onClick={() => setEditingHistory(null)} style={{
