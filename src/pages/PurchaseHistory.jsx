@@ -269,13 +269,13 @@ function ReceiptScanModal({ onClose, onSaved }) {
                         <select style={{ ...smallField, flex: 1 }} value={item.category || ''}
                           onChange={e => setItemField(i, 'category', e.target.value)}>
                           <option value="">分类</option>
-                          <optgroup label="食品">
+                          <optgroup label="食用品">
                             {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                           </optgroup>
-                          <optgroup label="日用品">
+                          <optgroup label="非食用品">
                             {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                           </optgroup>
-                          <option value="非食材">非食材（不入库）</option>
+                          <option value="杂物">杂物（不入库）</option>
                         </select>
                         {isDailyCategory(item.category) && (
                           <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, whiteSpace: 'nowrap' }}>→日用品</span>
@@ -1037,7 +1037,7 @@ export default function PurchaseHistory() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {Object.entries(groupedByYear).map(([year, months]) => {
-                const yearTotal = Object.values(months).flat().reduce((sum, h) => sum + (h.total_amount || 0), 0)
+                const yearTotal = Object.values(months).flat().reduce((sum, h) => sum + (Number(h.total_amount) || 0), 0)
                 const yearCount = Object.values(months).flat().length
                 const isYearCollapsed = collapsedYears[year]
 
@@ -1061,7 +1061,7 @@ export default function PurchaseHistory() {
                     {!isYearCollapsed && (
                       <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {Object.entries(months).map(([month, items]) => {
-                          const monthTotal = items.reduce((sum, h) => sum + (h.total_amount || 0), 0)
+                          const monthTotal = items.reduce((sum, h) => sum + (Number(h.total_amount) || 0), 0)
                           const monthKey = `${year}-${month}`
                           const isMonthCollapsed = collapsedMonths[monthKey]
 
