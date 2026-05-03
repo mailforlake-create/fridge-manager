@@ -127,12 +127,9 @@ function ReceiptScanModal({ onClose, onSaved }) {
           expiry_date: item.expiry_date || null,
           memo: item.memo || null,
         }))
-        
-        // --- BUG FIX STARTS HERE ---
-        const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
-        // --- BUG FIX ENDS HERE ---
 
-        // 建立 index → purchase_item_id 的映射
+        const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
+
         const purchaseItemMap = {}
         aiItems.forEach((item, i) => {
           const savedItem = savedItems?.[i]
@@ -157,7 +154,6 @@ function ReceiptScanModal({ onClose, onSaved }) {
           })
         }
 
-        // 日用品同样处理
         const dailyItems = aiItems
           .map((item, i) => ({ item, i }))
           .filter(({ item, i }) => selected[i] && isDailyCategory(item.category))
@@ -403,50 +399,46 @@ function ManualReceiptModal({ onClose, onSaved }) {
 
       if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
 
-      // 入库到 ingredients
-      // 按 index 建立 purchase_item_id 映射
-        const purchaseItemMap = {}
-        validItems.forEach((item, i) => {
-          const savedItem = savedItems?.[i]
-          if (savedItem) purchaseItemMap[i] = savedItem.id
+      const purchaseItemMap = {}
+      validItems.forEach((item, i) => {
+        const savedItem = savedItems?.[i]
+        if (savedItem) purchaseItemMap[i] = savedItem.id
+      })
+
+      const foodItems = validItems.map((item, i) => ({ item, i }))
+        .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
+      for (const { item, i } of foodItems) {
+        await supabase.from('ingredients').insert({
+          name_zh: item.name_zh,
+          name_original: item.name_original || null,
+          category: item.category || null,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '个',
+          expiry_date: item.expiry_date || null,
+          memo: item.memo || null,
+          location: 'fridge',
+          purchase_item_id: purchaseItemMap[i] || null
         })
+      }
 
-        // 入库到食用品
-        const foodItems = validItems.map((item, i) => ({ item, i }))
-          .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
-        for (const { item, i } of foodItems) {
-          await supabase.from('ingredients').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            expiry_date: item.expiry_date || null,
-            memo: item.memo || null,
-            location: 'fridge',
-            purchase_item_id: purchaseItemMap[i] || null
-          })
+      const dailyItems = validItems.map((item, i) => ({ item, i }))
+        .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
+      for (const { item, i } of dailyItems) {
+        const savedItemId = purchaseItemMap[i] || null
+        await supabase.from('daily_items').insert({
+          name_zh: item.name_zh,
+          name_original: item.name_original || null,
+          category: item.category || null,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '个',
+          memo: item.memo || null,
+          location: 'home',
+          purchase_item_id: savedItemId
+        })
+        if (savedItemId) {
+          await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
         }
-
-        // 入库到非食用品
-        const dailyItems = validItems.map((item, i) => ({ item, i }))
-          .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
-        for (const { item, i } of dailyItems) {
-          const savedItemId = purchaseItemMap[i] || null
-          await supabase.from('daily_items').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            memo: item.memo || null,
-            location: 'home',
-            purchase_item_id: savedItemId
-          })
-          if (savedItemId) {
-            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
-          }
-        }
+      }
 
       console.log('保存成功')
       onSaved()
@@ -472,7 +464,6 @@ function ManualReceiptModal({ onClose, onSaved }) {
           <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
 
-        {/* 小票头部信息 */}
         <div style={{ background: '#f8fafc', borderRadius: 12, padding: 12, marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 10 }}>小票信息</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -504,7 +495,6 @@ function ManualReceiptModal({ onClose, onSaved }) {
           </div>
         </div>
 
-        {/* 商品列表 */}
         <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 10 }}>
           商品明细（{items.length} 件）
         </div>
@@ -638,6 +628,7 @@ export default function PurchaseHistory() {
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [syncToIngredients, setSyncToIngredients] = useState(true)
   const [syncToDining, setSyncToDining] = useState(true)
+  
   useEffect(() => { fetchHistory() }, [])
 
   async function fetchHistory() {
@@ -695,20 +686,9 @@ export default function PurchaseHistory() {
     ))
   }
 
+  // --- BUG FIX STARTS HERE ---
+  // Corrected the nested function declaration syntax error
   async function saveHistoryEdit() {
- 
-    await supabase.from('purchase_history').update({
-      store_name: editingHistory.store_name,
-      store_name_original: editingHistory.store_name_original,
-      purchased_at: editingHistory.purchased_at || null,
-      total_amount: editingHistory.total_amount ? Number(editingHistory.total_amount) : null
-    }).eq('id', editingHistory.id)
-    setHistory(history.map(h => h.id === editingHistory.id ? { ...h, ...editingHistory } : h))
-    setEditingHistory(null)
-    setShowAddItems(false)
-    setNewItems([])
-
-       async function saveHistoryEdit() {
     await supabase.from('purchase_history').update({
       store_name: editingHistory.store_name,
       store_name_original: editingHistory.store_name_original,
@@ -717,7 +697,6 @@ export default function PurchaseHistory() {
         ? Number(editingHistory.total_amount) : null
     }).eq('id', editingHistory.id)
 
-    // 保存追加商品
     if (showAddItems && newItems.length > 0) {
       const validNew = newItems.filter(item => item.name_zh.trim())
       if (validNew.length > 0) {
@@ -740,7 +719,6 @@ export default function PurchaseHistory() {
         const { data: savedItems } = await supabase
           .from('purchase_items').insert(historyItems).select()
 
-        // 入库食用品
         const foodItems = validNew.map((item, i) => ({ item, i }))
           .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
         for (const { item, i } of foodItems) {
@@ -757,7 +735,6 @@ export default function PurchaseHistory() {
           })
         }
 
-        // 入库非食用品
         const dailyItems = validNew.map((item, i) => ({ item, i }))
           .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
         for (const { item, i } of dailyItems) {
@@ -779,73 +756,67 @@ export default function PurchaseHistory() {
       }
     }
 
-    setHistory(history.map(h => h.id === editingHistory.id ? { ...h, ...editingHistory } : h))
     setEditingHistory(null)
     setShowAddItems(false)
     setNewItems([])
-    fetchHistory() // 刷新以显示新追加的商品
+    fetchHistory()
   }
-  }
+  // --- BUG FIX ENDS HERE ---
 
   function confirmSaveItem(item) {
     saveItemEdit(editingItem.historyId, item)
   }
 
-  async function saveItemEdit(historyId, item, alsoFridge) {
-  setConfirm(null)
-  await supabase.from('purchase_items').update({
-    name_zh: item.name_zh,
-    name_original: item.name_original,
-    category: item.category,
-    quantity: Number(item.quantity) || 1,
-    unit: item.unit,
-    price: item.price || null,
-    original_price: item.original_price || null,
-    is_discount: item.is_discount,
-    discount_info: item.discount_info || null,
-    expiry_date: item.expiry_date || null,
-    memo: item.memo || null,
-  }).eq('id', item.id)
-
-  // 同步到物品库存（按 purchase_item_id 匹配）
-  if (syncToIngredients) {
-    await supabase.from('ingredients').update({
+  async function saveItemEdit(historyId, item) {
+    setConfirm(null)
+    await supabase.from('purchase_items').update({
       name_zh: item.name_zh,
+      name_original: item.name_original,
       category: item.category,
       quantity: Number(item.quantity) || 1,
       unit: item.unit,
+      price: item.price || null,
+      original_price: item.original_price || null,
+      is_discount: item.is_discount,
+      discount_info: item.discount_info || null,
       expiry_date: item.expiry_date || null,
       memo: item.memo || null,
-    }).eq('purchase_item_id', item.id)
-  }
+    }).eq('id', item.id)
 
-  // 同步到自炊履历（通过 ingredients 找 ingredient_id）
-  if (syncToDining) {
-    // 先找关联的 ingredient id
-    const { data: ings } = await supabase
-      .from('ingredients')
-      .select('id')
-      .eq('purchase_item_id', item.id)
-    if (ings?.length) {
-      for (const ing of ings) {
-        await supabase.from('dining_items').update({
-          name_zh: item.name_zh,
-          category: item.category,
-          unit: item.unit,
-          memo: item.memo || null,
-        }).eq('ingredient_id', ing.id)
+    if (syncToIngredients) {
+      await supabase.from('ingredients').update({
+        name_zh: item.name_zh,
+        category: item.category,
+        quantity: Number(item.quantity) || 1,
+        unit: item.unit,
+        expiry_date: item.expiry_date || null,
+        memo: item.memo || null,
+      }).eq('purchase_item_id', item.id)
+    }
+
+    if (syncToDining) {
+      const { data: ings } = await supabase
+        .from('ingredients')
+        .select('id')
+        .eq('purchase_item_id', item.id)
+      if (ings?.length) {
+        for (const ing of ings) {
+          await supabase.from('dining_items').update({
+            name_zh: item.name_zh,
+            category: item.category,
+            unit: item.unit,
+            memo: item.memo || null,
+          }).eq('ingredient_id', ing.id)
+        }
       }
     }
+
+    setHistory(history.map(h => h.id === historyId
+      ? { ...h, purchase_items: h.purchase_items.map(i => i.id === item.id ? item : i) }
+      : h
+    ))
+    setEditingItem(null)
   }
-
-  setHistory(history.map(h => h.id === historyId
-    ? { ...h, purchase_items: h.purchase_items.map(i => i.id === item.id ? item : i) }
-    : h
-  ))
-  setEditingItem(null)
-}
-
-  // ── 过滤 + 按年/月分组 ───────────────────────────────────────
 
   const filteredHistory = history.map(h => {
     if (!search) return { ...h, matchedItems: null }
@@ -923,7 +894,6 @@ export default function PurchaseHistory() {
             </button>
           </div>
 
-          {/* 搜索框 */}
           <div style={{ position: 'relative', marginBottom: 16 }}>
             <span style={{
               position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
@@ -943,6 +913,7 @@ export default function PurchaseHistory() {
               }}>×</button>
             )}
           </div>
+          
           {showReceiptScan && (
             <ReceiptScanModal
               onClose={() => setShowReceiptScan(false)}
@@ -955,9 +926,41 @@ export default function PurchaseHistory() {
               onSaved={fetchHistory}
             />
           )}
-         
+          
+          {detailItem && <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+          {confirm && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: 24
+            }}>
+              <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{confirm.title}</div>
+                {confirm.message && (
+                  <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>{confirm.message}</div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {confirm.onYes && (
+                    <button onClick={confirm.onYes} style={{
+                      padding: '11px 0', borderRadius: 10, background: '#ef4444',
+                      color: '#fff', fontSize: 15, fontWeight: 700
+                    }}>是，同步操作冰箱</button>
+                  )}
+                  {(confirm.onNo || confirm.onConfirm) && (
+                    <button onClick={confirm.onNo || confirm.onConfirm} style={{
+                      padding: '11px 0', borderRadius: 10, background: '#f1f5f9',
+                      color: '#475569', fontSize: 15, fontWeight: 600
+                    }}>{confirm.onYes ? '否，仅操作履历' : '确认删除'}</button>
+                  )}
+                  <button onClick={confirm.onCancel} style={{
+                    padding: '11px 0', borderRadius: 10, background: '#fff',
+                    color: '#94a3b8', fontSize: 14, border: '1px solid #e2e8f0'
+                  }}>取消</button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {/* 编辑履历头部弹窗 */}
           {editingHistory && (
             <div style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
@@ -965,7 +968,7 @@ export default function PurchaseHistory() {
             }}>
               <div style={{
                 background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
-                width: '100%', maxWidth: 430
+                width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto'
               }}>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>编辑购物记录</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -990,7 +993,6 @@ export default function PurchaseHistory() {
                       onChange={e => setEditingHistory(h => ({ ...h, total_amount: e.target.value }))} />
                   </div>
                 </div>
-                {/* 追加商品 */}
                 <div style={{ marginTop: 4 }}>
                   <button onClick={() => {
                     setShowAddItems(!showAddItems)
@@ -1111,7 +1113,7 @@ export default function PurchaseHistory() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button onClick={() => setEditingHistory(null)} style={{
+                  <button onClick={() => { setEditingHistory(null); setShowAddItems(false); setNewItems([]) }} style={{
                     flex: 1, padding: '11px 0', borderRadius: 10,
                     background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
                   }}>取消</button>
@@ -1124,7 +1126,6 @@ export default function PurchaseHistory() {
             </div>
           )}
 
-          {/* 编辑单个商品弹窗 */}
           {editingItem && (
             <div style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
@@ -1265,7 +1266,6 @@ export default function PurchaseHistory() {
             </div>
           )}
 
-          {/* 主列表 */}
           {loading ? (
             <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: 40 }}>加载中...</p>
           ) : filteredHistory.length === 0 ? (
@@ -1281,7 +1281,6 @@ export default function PurchaseHistory() {
 
                 return (
                   <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
-                    {/* 年份标题 */}
                     <div onClick={() => setCollapsedYears(c => ({ ...c, [year]: !c[year] }))}
                       style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f8fafc' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1305,7 +1304,6 @@ export default function PurchaseHistory() {
 
                           return (
                             <div key={month}>
-                              {/* 月份标题 */}
                               <div onClick={() => setCollapsedMonths(c => ({ ...c, [monthKey]: !c[monthKey] }))}
                                 style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMonthCollapsed ? 0 : 8, paddingBottom: 6, borderBottom: '1.5px solid #f1f5f9' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
