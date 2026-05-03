@@ -278,7 +278,7 @@ function ReceiptScanModal({ onClose, onSaved }) {
                           <option value="杂物">杂物（不入库）</option>
                         </select>
                         {isDailyCategory(item.category) && (
-                          <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, whiteSpace: 'nowrap' }}>→日用品</span>
+                          <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, whiteSpace: 'nowrap' }}>→非食用品</span>
                         )}
                         {item.price && (
                           <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
