@@ -496,8 +496,9 @@ async function saveEdit() {
             {editingQty ? (
               <input
                 type="number"
+                step="0.1"
                 value={consumeQty}
-                onChange={e => setConsumeQty(Math.min(remaining, Math.max(1, Number(e.target.value))))}
+                onChange={e => setConsumeQty(Math.min(remaining, Math.max(0.1, Number(e.target.value))))}
                 onBlur={() => setEditingQty(false)}
                 autoFocus
                 style={{
