@@ -23,7 +23,10 @@ export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
             />
             {onDelete && (
               <button
-                onClick={e => { e.stopPropagation(); onDelete(photo) }}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (window.confirm('确认删除这张照片？')) onDelete(photo)
+                }}
                 style={{
                   position: 'absolute', top: -6, right: -6,
                   width: 18, height: 18, borderRadius: '50%',
@@ -81,7 +84,13 @@ export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
             }}>×</button>
           {onDelete && (
             <button
-              onClick={e => { e.stopPropagation(); onDelete(preview); setPreview(null) }}
+              onClick={e => {
+                e.stopPropagation()
+                if (window.confirm('确认删除这张照片？')) {
+                  onDelete(preview)
+                  setPreview(null)
+                }
+              }}
               style={{
                 position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
                 background: '#ef4444', color: '#fff', padding: '8px 20px',

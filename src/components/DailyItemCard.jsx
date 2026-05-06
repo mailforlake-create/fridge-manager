@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
+  const [syncPurchase, setSyncPurchase] = useState(true)
   const [editing, setEditing] = useState(false)
   const [consuming, setConsuming] = useState(false)
   const [consumeQty, setConsumeQty] = useState(1)
@@ -33,17 +34,30 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
     setEditingQty(false)
   }
 
-  async function saveEdit() {
-    setSaving(true)
-    const updates = {
-      ...form,
-      quantity: Number(form.quantity) || 1,
-    }
-    await supabase.from('daily_items').update(updates).eq('id', item.id)
-    onUpdate({ ...item, ...updates })
-    setSaving(false)
-    setEditing(false)
+async function saveEdit() {
+  setSaving(true)
+  const updates = {
+    ...form,
+    quantity: Number(form.quantity) || 1,
   }
+  await supabase.from('daily_items').update(updates).eq('id', item.id)
+
+  // 同步到购物履历
+  if (syncPurchase && item.purchase_item_id) {
+    await supabase.from('purchase_items').update({
+      name_zh: form.name_zh,
+      name_original: form.name_original || null,
+      category: form.category || null,
+      quantity: Number(form.quantity) || 1,
+      unit: form.unit,
+      memo: form.memo || null,
+    }).eq('id', item.purchase_item_id)
+  }
+
+  onUpdate({ ...item, ...updates })
+  setSaving(false)
+  setEditing(false)
+}
 
   const field = {
     width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 14,
@@ -96,6 +110,15 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
         </div>
         <input style={field} value={form.memo}
           onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="备注（可选）" />
+        {item.purchase_item_id && (
+          <div style={{ background: '#f8fafc', borderRadius: 9, padding: '9px 11px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569' }}>
+              <input type="checkbox" checked={syncPurchase} onChange={e => setSyncPurchase(e.target.checked)}
+                style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
+              同步更新购物履历
+            </label>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setEditing(false)} style={{
             flex: 1, padding: '9px 0', borderRadius: 10,
