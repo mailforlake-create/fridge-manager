@@ -177,7 +177,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
     : daysLeft <= 7 ? '#f59e0b'
     : '#16a34a'
 
-  const remaining = (item.quantity || 0) - (item.consumed_quantity || 0)
+  const remaining = parseFloat(((item.quantity || 0) - (item.consumed_quantity || 0)).toFixed(2))
 
   async function updateQuantity(delta) {
     const newQty = Math.max(1, (item.quantity || 1) + delta)
@@ -194,7 +194,7 @@ async function consumeItem(all) {
   if (qty > remaining) return alert(`最多可消耗 ${remaining}${item.unit}`)
   if (addToDining && !diningMeal) return alert('请选择餐次')
 
-  const newConsumed = (item.consumed_quantity || 0) + qty
+  const newConsumed = parseFloat(((item.consumed_quantity || 0) + qty).toFixed(2))
   const isFullyConsumed = newConsumed >= (item.quantity || 0)
 
   await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', item.id)
@@ -486,7 +486,7 @@ async function saveEdit() {
           background: '#fafafa', border: '1px solid #f1f5f9'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-            <button onClick={() => { setConsumeQty(q => Math.max(1, Number(q) - 1)); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.max(0.1, parseFloat((Number(q) - 0.1).toFixed(1)))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -517,7 +517,7 @@ async function saveEdit() {
               </div>
             )}
 
-            <button onClick={() => { setConsumeQty(q => Math.min(remaining, Number(q) + 1)); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.min(remaining, parseFloat((Number(q) + 0.1).toFixed(1)))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
