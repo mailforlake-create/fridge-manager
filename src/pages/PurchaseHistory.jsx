@@ -628,6 +628,7 @@ export default function PurchaseHistory() {
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [syncToIngredients, setSyncToIngredients] = useState(true)
   const [syncToDining, setSyncToDining] = useState(true)
+  const [syncDeleteStock, setSyncDeleteStock] = useState(true)
   
   useEffect(() => { fetchHistory() }, [])
 
@@ -644,8 +645,14 @@ export default function PurchaseHistory() {
   function confirmDeleteHistory(h) {
     setConfirm({
       title: `删除「${h.store_name || '未知商家'}」的购物记录`,
-      message: '同时删除已存入冰箱的对应食材？',
-      onYes: () => deleteHistory(h, true),
+      message: '同步更新物品库存？',
+      onYes: async () => {
+        await supabase.from('purchase_items').delete().eq('id', item.id)
+        await supabase.from('ingredients').delete().eq('purchase_item_id', item.id)
+        await supabase.from('daily_items').delete().eq('purchase_item_id', item.id)
+        // ...更新 state
+        setConfirm(null)
+      },
       onNo: () => deleteHistory(h, false),
       onCancel: () => setConfirm(null)
     })
@@ -664,26 +671,24 @@ export default function PurchaseHistory() {
   }
 
   function confirmDeleteItem(historyId, item) {
-    setConfirm({
-      title: `删除「${item.name_zh}」`,
-      message: item.add_to_fridge ? '同时删除已存入冰箱的该食材？' : null,
-      onYes: item.add_to_fridge ? () => deleteItem(historyId, item, true) : null,
-      onNo: item.add_to_fridge ? () => deleteItem(historyId, item, false) : null,
-      onConfirm: !item.add_to_fridge ? () => deleteItem(historyId, item, false) : null,
-      onCancel: () => setConfirm(null)
-    })
+    setSyncDeleteStock(true)
+    setConfirm({ historyId, item })
   }
 
-  async function deleteItem(historyId, item, alsoFridge) {
-    setConfirm(null)
-    if (alsoFridge) {
-      await supabase.from('ingredients').delete().eq('name_zh', item.name_zh)
-    }
+  async function deleteItem() {
+    const { historyId, item } = confirm
     await supabase.from('purchase_items').delete().eq('id', item.id)
-    setHistory(history.map(h => h.id === historyId
-      ? { ...h, purchase_items: h.purchase_items.filter(i => i.id !== item.id) }
-      : h
+    if (syncDeleteStock && item.add_to_fridge) {
+      await supabase.from('ingredients').delete().eq('purchase_item_id', item.id)
+      await supabase.from('daily_items').delete().eq('purchase_item_id', item.id)
+    }
+    setHistory(history.map(h =>
+      h.id === historyId
+        ? { ...h, purchase_items: h.purchase_items.filter(i => i.id !== item.id) }
+        : h
     ))
+    setConfirm(null)
+    setSyncDeleteStock(true)
   }
 
   // --- BUG FIX STARTS HERE ---
@@ -944,7 +949,7 @@ export default function PurchaseHistory() {
                     <button onClick={confirm.onYes} style={{
                       padding: '11px 0', borderRadius: 10, background: '#ef4444',
                       color: '#fff', fontSize: 15, fontWeight: 700
-                    }}>是，同步操作冰箱</button>
+                    }}>是，同步更新物品库存</button>
                   )}
                   {(confirm.onNo || confirm.onConfirm) && (
                     <button onClick={confirm.onNo || confirm.onConfirm} style={{
