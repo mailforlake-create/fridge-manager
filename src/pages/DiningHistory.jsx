@@ -218,6 +218,35 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
   async function save() {
     setSaving(true)
     await supabase.from('dining_items').update({ memo: memo || null }).eq('id', item.id)
+    if (dining) {
+        // 保存手动追加菜品
+        const validManual = manualDishes.filter(d => d.name_zh.trim())
+        if (validManual.length > 0) {
+          await supabase.from('dining_items').insert(
+            validManual.map(d => ({
+              dining_id: dining.id,
+              name_zh: d.name_zh,
+              quantity: Number(d.quantity) || 1,
+              unit: d.unit || '人份'
+            }))
+          )
+        }
+
+        // 上传待处理照片
+        if (pendingPhotos.length > 0) {
+          for (const file of pendingPhotos) {
+            try {
+              const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
+              await supabase.from('dining_photos').insert({
+                dining_id: dining.id,
+                dining_item_id: null,
+                file_path: filePath,
+                url
+              })
+            } catch (e) { console.error('照片上传失败', e) }
+          }
+        }
+      }
     onSaveMemo(item.id, memo)
     setSaving(false)
   }
@@ -729,6 +758,8 @@ function AddDiningModal({ onClose, onSaved }) {
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])
   const [dinedTime, setDinedTime] = useState('')
   const [memo, setMemo] = useState('')
+  const [pendingPhotos, setPendingPhotos] = useState([]) // 待上传到整条履历的照片
+  const [manualDishes, setManualDishes] = useState([])   // 手动追加的菜品（两种类型通用）
 
   // 自炊食材选择
   const [homeSelected, setHomeSelected] = useState({})
@@ -809,6 +840,7 @@ async function fetchIngredients() {
   }, 0)
 
   async function recognizeBill(files) {
+    const [billFile, setBillFile] = useState(null)
     setLoading(true)
     try {
       const parts = []
@@ -847,6 +879,8 @@ async function fetchIngredients() {
     } catch (e) { alert('识别失败：' + e.message) }
     setLoading(false)
   }
+
+  const [recognizedFiles, setRecognizedFiles] = useState([]) // 识别时使用的图片文件
 
   const setOutItemField = useCallback((i, k, v) => {
     setOutItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
@@ -1017,7 +1051,11 @@ async function fetchIngredients() {
                 ) : !billData ? (
                   <div>
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} id="bill-input"
-                      onChange={e => recognizeBill(Array.from(e.target.files))} />
+                      onChange={e => {
+                        const files = Array.from(e.target.files)
+                        setBillFile(files[0] || null)
+                        recognizeBill(files)
+                      }} />
                     <button onClick={() => document.getElementById('bill-input').click()} style={{
                       width: '100%', padding: '24px 0', borderRadius: 12, border: '2px dashed #fed7aa',
                       background: '#fff7ed', color: '#9a3412', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6
@@ -1054,6 +1092,17 @@ async function fetchIngredients() {
                         </div>
                       </div>
                     ))}
+                    {billFile && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569', marginTop: 6 }}>
+                        <input type="checkbox" defaultChecked
+                          onChange={e => {
+                            if (e.target.checked) setPendingPhotos(p => [...p, billFile])
+                            else setPendingPhotos(p => p.filter(f => f !== billFile))
+                          }}
+                          style={{ width: 14, height: 14, accentColor: '#f97316' }} />
+                        同时上传账单图片到餐饮记录
+                      </label>
+                    )}
                     <button onClick={() => { setBillData(null); setOutItems([]) }}
                       style={{ padding: '6px 0', borderRadius: 7, background: '#f1f5f9', color: '#475569', fontSize: 13 }}>重新识别</button>
                   </div>
@@ -1068,7 +1117,11 @@ async function fetchIngredients() {
                 ) : (
                   <div>
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} id="out-dish-input"
-                      onChange={e => recognizeOutDish(Array.from(e.target.files))} />
+                      onChange={e => {
+                        const files = Array.from(e.target.files)
+                        setRecognizedFiles(prev => [...prev, ...files])
+                        recognizeOutDish(files)
+                      }} />
                     <button onClick={() => document.getElementById('out-dish-input').click()} style={{
                       width: '100%', padding: '20px 0', borderRadius: 12, border: '2px dashed #fed7aa',
                       background: '#fff7ed', color: '#9a3412', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
@@ -1088,6 +1141,17 @@ async function fetchIngredients() {
                         ))}
                       </div>
                     )}
+                    {recognizedFiles.length > 0 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569', marginTop: 8 }}>
+                        <input type="checkbox" defaultChecked
+                          onChange={e => {
+                            if (e.target.checked) setPendingPhotos(p => [...p, ...recognizedFiles])
+                            else setPendingPhotos(p => p.filter(f => !recognizedFiles.includes(f)))
+                          }}
+                          style={{ width: 14, height: 14, accentColor: '#f97316' }} />
+                        同时上传此图片到餐饮记录
+                      </label>
+                    )}
                   </div>
                 )}
               </div>
@@ -1105,6 +1169,67 @@ async function fetchIngredients() {
             </div>
           </>
         )}
+        {/* 手动追加菜品 */}
+          {diningType && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                手动追加菜品（可选）
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {manualDishes.map((dish, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input style={{ ...smallField, flex: 2 }} value={dish.name_zh}
+                      placeholder="菜品名称"
+                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],name_zh:e.target.value}; return n })} />
+                    <input style={{ ...smallField, flex: 1, textAlign: 'center' }} type="number" value={dish.quantity}
+                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],quantity:e.target.value}; return n })} />
+                    <select style={{ ...smallField, flex: 1 }} value={dish.unit}
+                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],unit:e.target.value}; return n })}>
+                      {['人份','个','碗','盘','杯'].map(u => <option key={u}>{u}</option>)}
+                    </select>
+                    <button onClick={() => setManualDishes(d => d.filter((_, j) => j !== i))}
+                      style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+                  </div>
+                ))}
+                <button onClick={() => setManualDishes(d => [...d, { name_zh: '', quantity: 1, unit: '人份' }])}
+                  style={{ padding: '7px 0', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600 }}>
+                  + 添加菜品
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 上传照片 */}
+          {diningType && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                上传照片（可选）
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {pendingPhotos.map((file, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={URL.createObjectURL(file)} alt=""
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1.5px solid #e2e8f0' }} />
+                    <button onClick={() => setPendingPhotos(p => p.filter((_, j) => j !== i))} style={{
+                      position: 'absolute', top: -6, right: -6, width: 18, height: 18,
+                      borderRadius: '50%', background: '#ef4444', color: '#fff',
+                      fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>×</button>
+                  </div>
+                ))}
+                <label style={{
+                  width: 64, height: 64, borderRadius: 8, border: '1.5px dashed #cbd5e1',
+                  background: '#f8fafc', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2
+                }}>
+                  <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                    onChange={e => { setPendingPhotos(p => [...p, ...Array.from(e.target.files)]); e.target.value = '' }} />
+                  <span style={{ fontSize: 20, color: '#94a3b8' }}>+</span>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>照片</span>
+                </label>
+              </div>
+            </div>
+          )}
 
         <div style={{ marginBottom: 14 }}>
           <input style={field} value={memo} onChange={e => setMemo(e.target.value)} placeholder="备注（可选）" />
