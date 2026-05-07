@@ -219,34 +219,85 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
     setSaving(true)
     await supabase.from('dining_items').update({ memo: memo || null }).eq('id', item.id)
     if (dining) {
-        // 保存手动追加菜品
-        const validManual = manualDishes.filter(d => d.name_zh.trim())
-        if (validManual.length > 0) {
-          await supabase.from('dining_items').insert(
-            validManual.map(d => ({
-              dining_id: dining.id,
-              name_zh: d.name_zh,
-              quantity: Number(d.quantity) || 1,
-              unit: d.unit || '人份'
-            }))
-          )
-        }
+    const dishesToInsert = []
 
-        // 上传待处理照片
-        if (pendingPhotos.length > 0) {
-          for (const file of pendingPhotos) {
-            try {
-              const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
-              await supabase.from('dining_photos').insert({
-                dining_id: dining.id,
-                dining_item_id: null,
-                file_path: filePath,
-                url
-              })
-            } catch (e) { console.error('照片上传失败', e) }
-          }
+    // 外食识别菜品
+    if (diningType === 'out' && outItems.length > 0) {
+      outItems.filter(i => i.name_zh?.trim()).forEach(item => {
+        dishesToInsert.push({
+          dining_id: dining.id,
+          name_zh: item.name_zh,
+          name_original: item.name_original || null,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '份',
+          price: item.price ? Number(item.price) : null
+        })
+      })
+    }
+
+    // 自炊食材
+    if (diningType === 'home' && Object.keys(homeSelected).length > 0) {
+      Object.entries(homeSelected).forEach(([id, s]) => {
+        const ing = ingredients.find(i => i.id === id)
+        if (!ing) return
+        dishesToInsert.push({
+          dining_id: dining.id,
+          name_zh: ing.name_zh,
+          name_original: ing.name_original || null,
+          category: ing.category || null,
+          quantity: ing.quantity,
+          unit: ing.unit || '个',
+          consumed_quantity: s.qty,
+          ingredient_id: id,
+          update_consumed: s.updateConsumed || false,
+          price_contribution: calcCost(ing, s.qty)
+        })
+      })
+    }
+
+    // 手动追加菜品（自炊和外食都支持）
+    manualDishes.filter(d => d.name_zh.trim()).forEach(d => {
+      dishesToInsert.push({
+        dining_id: dining.id,
+        name_zh: d.name_zh,
+        quantity: Number(d.quantity) || 1,
+        unit: d.unit || '人份',
+        price: d.price ? Number(d.price) : null
+      })
+    })
+
+    if (dishesToInsert.length > 0) {
+      await supabase.from('dining_items').insert(dishesToInsert)
+    }
+
+    // 自炊：更新食材消耗量
+    if (diningType === 'home') {
+      for (const [id, s] of Object.entries(homeSelected)) {
+        if (!s.updateConsumed) continue
+        const ing = ingredients.find(i => i.id === id)
+        if (!ing) continue
+        const newConsumed = parseFloat(Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0).toFixed(2))
+        const isFully = newConsumed >= (ing.quantity || 0)
+        await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', id)
+        if (ing.purchase_item_id && isFully) {
+          await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
         }
       }
+    }
+
+    // 上传照片
+    for (const file of pendingPhotos) {
+      try {
+        const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
+        await supabase.from('dining_photos').insert({
+          dining_id: dining.id,
+          dining_item_id: null,
+          file_path: filePath,
+          url
+        })
+      } catch (e) { console.error('照片上传失败', e) }
+    }
+  }
     onSaveMemo(item.id, memo)
     setSaving(false)
   }
@@ -1177,27 +1228,44 @@ async function fetchIngredients() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {manualDishes.map((dish, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input style={{ ...smallField, flex: 2 }} value={dish.name_zh}
-                      placeholder="菜品名称"
-                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],name_zh:e.target.value}; return n })} />
-                    <input style={{ ...smallField, flex: 1, textAlign: 'center' }} type="number" value={dish.quantity}
-                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],quantity:e.target.value}; return n })} />
-                    <select style={{ ...smallField, flex: 1 }} value={dish.unit}
-                      onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],unit:e.target.value}; return n })}>
-                      {['人份','个','碗','盘','杯'].map(u => <option key={u}>{u}</option>)}
-                    </select>
-                    <button onClick={() => setManualDishes(d => d.filter((_, j) => j !== i))}
-                      style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+                  <div key={i} style={{ background: '#f8fafc', borderRadius: 9, padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                      <input style={{ ...smallField, flex: 1 }} value={dish.name_zh}
+                        placeholder="菜品名称"
+                        onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],name_zh:e.target.value}; return n })} />
+                      <button onClick={() => setManualDishes(d => d.filter((_, j) => j !== i))}
+                        style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>份数</div>
+                        <input style={smallField} type="number" value={dish.quantity}
+                          onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],quantity:e.target.value}; return n })} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单位</div>
+                        <select style={smallField} value={dish.unit}
+                          onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],unit:e.target.value}; return n })}>
+                          {['人份','个','碗','盘','杯'].map(u => <option key={u}>{u}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单价（¥）</div>
+                        <input style={smallField} type="number" value={dish.price || ''}
+                          placeholder="可选"
+                          onChange={e => setManualDishes(d => { const n=[...d]; n[i]={...n[i],price:e.target.value}; return n })} />
+                      </div>
+                    </div>
                   </div>
                 ))}
-                <button onClick={() => setManualDishes(d => [...d, { name_zh: '', quantity: 1, unit: '人份' }])}
+                <button onClick={() => setManualDishes(d => [...d, { name_zh: '', quantity: 1, unit: '人份', price: '' }])}
                   style={{ padding: '7px 0', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600 }}>
                   + 添加菜品
                 </button>
               </div>
             </div>
           )}
+          
 
           {/* 上传照片 */}
           {diningType && (
