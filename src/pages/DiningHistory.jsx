@@ -6,14 +6,19 @@ import PhotoViewer from '../components/PhotoViewer'
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [ingSearch, setIngSearch] = useState('')
   const [ingFilterStatus, setIngFilterStatus] = useState('active')
-  const [ingFilterCategory, setIngFilterCategory] = useState('')
+  const[ingFilterCategory, setIngFilterCategory] = useState('')
   const [ingFilterStore, setIngFilterStore] = useState('')
-  const [ingFilterDate, setIngFilterDate] = useState('')
+  const[ingFilterDate, setIngFilterDate] = useState('')
   const [ingPage, setIngPage] = useState(0)
   const PAGE_SIZE = 8
 
-  const stores = [...new Set(ingredients.map(i => i.purchase_item?.purchase_history?.store_name).filter(Boolean))]
-  const categories = [...new Set(ingredients.map(i => i.category).filter(Boolean))]
+  const smallField = {
+    width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+  }
+
+  const stores =[...new Set(ingredients.map(i => i.purchase_item?.purchase_history?.store_name).filter(Boolean))]
+  const categories =[...new Set(ingredients.map(i => i.category).filter(Boolean))]
 
   const now = new Date(dinedAt)
   const dateRanges = {
@@ -30,7 +35,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
     if (ingFilterStore && i.purchase_item?.purchase_history?.store_name !== ingFilterStore) return false
     const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
     if (ingFilterDate && (!purchasedAt || purchasedAt < dateRanges[ingFilterDate])) return false
-    if (ingSearch && !i.name_zh?.includes(ingSearch) && !i.name_original?.includes(ingSearch)) return false
+    if (ingSearch && !i.name_zh?.toLowerCase().includes(ingSearch.toLowerCase()) && !i.name_original?.toLowerCase().includes(ingSearch.toLowerCase())) return false
     return true
   })
 
@@ -45,7 +50,6 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
 
   return (
     <div>
-      {/* 过滤条件 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
         <input value={ingSearch} onChange={e => { setIngSearch(e.target.value); setIngPage(0) }}
           placeholder="搜索食材..."
@@ -88,7 +92,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
               <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>没有符合条件的食材</div>
             )}
             {pagedIng.map(ing => {
-              const remaining = (ing.quantity || 0) - (ing.consumed_quantity || 0)
+              const remaining = parseFloat(((ing.quantity || 0) - (ing.consumed_quantity || 0)).toFixed(2))
               const isSelected = !!selected[ing.id]
               const sel = selected[ing.id]
               const cost = isSelected ? calcCost(ing, sel?.qty || 1) : 0
@@ -105,7 +109,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                     <div onClick={() => {
                       setSelected(s => {
                         if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
-                        return { ...s, [ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false } }
+                        return { ...s,[ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false } }
                       })
                     }} style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -144,7 +148,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                           {remaining > 0 && (
                             <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 11, color: '#475569' }}>
                               <input type="checkbox" checked={sel?.updateConsumed || false}
-                                onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], updateConsumed: e.target.checked } }))}
+                                onChange={e => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], updateConsumed: e.target.checked } }))}
                                 style={{ width: 13, height: 13, accentColor: '#16a34a' }} />
                               同步更新食用量
                             </label>
@@ -173,8 +177,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
   )
 }
 
-
-const MEAL_TIMES = [
+const MEAL_TIMES =[
   { id: 'breakfast', label: '早餐', icon: '🌅' },
   { id: 'lunch', label: '午餐', icon: '☀️' },
   { id: 'dinner', label: '晚餐', icon: '🌙' },
@@ -193,7 +196,6 @@ const field = {
   border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
 }
 
-// 计算食材成本（按数量比例）
 function calcIngredientCost(ingredient, consumedQty) {
   const price = ingredient.purchase_item?.price
   const totalQty = ingredient.quantity || 1
@@ -201,103 +203,14 @@ function calcIngredientCost(ingredient, consumedQty) {
   return Math.round((price * consumedQty / totalQty) * 10) / 10
 }
 
-// 计算一餐总成本
-function calcMealCost(selectedItems) {
-  return Object.values(selectedItems).reduce((sum, s) => {
-    if (!s.selected) return sum
-    return sum + calcIngredientCost(s.ingredient, s.qty)
-  }, 0)
-}
-
-// ── 菜品详情弹窗 ──────────────────────────────────────────
 function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, uploading, onClose, onSaveMemo }) {
-  const [memo, setMemo] = useState(item.memo || '')
+  const[memo, setMemo] = useState(item.memo || '')
   const [saving, setSaving] = useState(false)
-  const itemPhotos = photos[`${diningId}-item-${item.id}`] || []
+  const itemPhotos = photos[`${diningId}-item-${item.id}`] ||[]
 
   async function save() {
     setSaving(true)
     await supabase.from('dining_items').update({ memo: memo || null }).eq('id', item.id)
-    if (dining) {
-    const dishesToInsert = []
-
-    // 外食识别菜品
-    if (diningType === 'out' && outItems.length > 0) {
-      outItems.filter(i => i.name_zh?.trim()).forEach(item => {
-        dishesToInsert.push({
-          dining_id: dining.id,
-          name_zh: item.name_zh,
-          name_original: item.name_original || null,
-          quantity: Number(item.quantity) || 1,
-          unit: item.unit || '份',
-          price: item.price ? Number(item.price) : null
-        })
-      })
-    }
-
-    // 自炊食材
-    if (diningType === 'home' && Object.keys(homeSelected).length > 0) {
-      Object.entries(homeSelected).forEach(([id, s]) => {
-        const ing = ingredients.find(i => i.id === id)
-        if (!ing) return
-        dishesToInsert.push({
-          dining_id: dining.id,
-          name_zh: ing.name_zh,
-          name_original: ing.name_original || null,
-          category: ing.category || null,
-          quantity: ing.quantity,
-          unit: ing.unit || '个',
-          consumed_quantity: s.qty,
-          ingredient_id: id,
-          update_consumed: s.updateConsumed || false,
-          price_contribution: calcCost(ing, s.qty)
-        })
-      })
-    }
-
-    // 手动追加菜品（自炊和外食都支持）
-    manualDishes.filter(d => d.name_zh.trim()).forEach(d => {
-      dishesToInsert.push({
-        dining_id: dining.id,
-        name_zh: d.name_zh,
-        quantity: Number(d.quantity) || 1,
-        unit: d.unit || '人份',
-        price: d.price ? Number(d.price) : null
-      })
-    })
-
-    if (dishesToInsert.length > 0) {
-      await supabase.from('dining_items').insert(dishesToInsert)
-    }
-
-    // 自炊：更新食材消耗量
-    if (diningType === 'home') {
-      for (const [id, s] of Object.entries(homeSelected)) {
-        if (!s.updateConsumed) continue
-        const ing = ingredients.find(i => i.id === id)
-        if (!ing) continue
-        const newConsumed = parseFloat(Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0).toFixed(2))
-        const isFully = newConsumed >= (ing.quantity || 0)
-        await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', id)
-        if (ing.purchase_item_id && isFully) {
-          await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
-        }
-      }
-    }
-
-    // 上传照片
-    for (const file of pendingPhotos) {
-      try {
-        const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
-        await supabase.from('dining_photos').insert({
-          dining_id: dining.id,
-          dining_item_id: null,
-          file_path: filePath,
-          url
-        })
-      } catch (e) { console.error('照片上传失败', e) }
-    }
-  }
     onSaveMemo(item.id, memo)
     setSaving(false)
   }
@@ -335,7 +248,6 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
   )
 }
 
-// ── 编辑弹窗 ──────────────────────────────────────────────
 function EditDiningModal({ record, onClose, onSaved }) {
   const [header, setHeader] = useState({
     meal_time: record.meal_time || null,
@@ -347,32 +259,31 @@ function EditDiningModal({ record, onClose, onSaved }) {
     memo: record.memo || ''
   })
   const [items, setItems] = useState(
-    (record.dining_items || []).map(i => ({ ...i, price: i.price || '', qty_edit: i.consumed_quantity || i.quantity || 1 }))
+    (record.dining_items ||[]).map(i => ({ ...i, price: i.price || '', qty_edit: i.consumed_quantity || i.quantity || 1 }))
   )
-  const [saving, setSaving] = useState(false)
-
-  // 自炊追加食材
-  const [showAddMore, setShowAddMore] = useState(false)
+  const[saving, setSaving] = useState(false)
+  const[showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
-  const [addSelected, setAddSelected] = useState({})
+  const[addSelected, setAddSelected] = useState({})
 
   useEffect(() => {
     if (record.dining_type === 'home') fetchIngredients()
-  }, [])
+  },[record.dining_type, record.dined_at])
 
-async function fetchIngredients() {
-  const { data } = await supabase
-    .from('ingredients')
-    .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
-    .order('created_at', { ascending: false })
-  setIngredients((data || []).filter(i => {
-    const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
-    if (!purchasedAt) return true
-    return purchasedAt <= record.dined_at
-  }))
-}
+  async function fetchIngredients() {
+    const { data } = await supabase
+      .from('ingredients')
+      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .order('created_at', { ascending: false })
+    setIngredients((data ||[]).filter(i => {
+      const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
+      if (!purchasedAt) return true
+      return purchasedAt <= record.dined_at
+    }))
+  }
 
   function calcCost(ing, qty) {
+    if (!ing) return 0;
     const price = ing.purchase_item?.price
     if (!price || !qty) return 0
     return Math.round((price * qty / (ing.quantity || 1)) * 10) / 10
@@ -382,78 +293,79 @@ async function fetchIngredients() {
 
   async function save() {
     setSaving(true)
+    try {
+      await supabase.from('dining_history').update({
+        meal_time: header.meal_time || null,
+        dined_at: header.dined_at,
+        dined_time: header.dined_time || null,
+        store_name: header.store_name || null,
+        store_name_original: header.store_name_original || null,
+        amount: header.amount ? Number(header.amount) : null,
+        memo: header.memo || null
+      }).eq('id', record.id)
 
-    await supabase.from('dining_history').update({
-      meal_time: header.meal_time || null,
-      dined_at: header.dined_at,
-      dined_time: header.dined_time || null,
-      store_name: header.store_name || null,
-      store_name_original: header.store_name_original || null,
-      amount: header.amount ? Number(header.amount) : null,
-      memo: header.memo || null
-    }).eq('id', record.id)
+      if (record.dining_type === 'out') {
+        await supabase.from('dining_items').delete().eq('dining_id', record.id)
+        const validItems = items.filter(i => i.name_zh?.trim())
+        if (validItems.length > 0) {
+          await supabase.from('dining_items').insert(
+            validItems.map(item => ({
+              dining_id: record.id,
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '份',
+              price: item.price ? Number(item.price) : null
+            }))
+          )
+        }
+      }
 
-    if (record.dining_type === 'out') {
-      await supabase.from('dining_items').delete().eq('dining_id', record.id)
-      const validItems = items.filter(i => i.name_zh?.trim())
-      if (validItems.length > 0) {
-        await supabase.from('dining_items').insert(
-          validItems.map(item => ({
+      if (record.dining_type === 'home') {
+        for (const item of items) {
+          if (item.id) {
+            await supabase.from('dining_items').update({
+              consumed_quantity: Number(item.qty_edit) || item.consumed_quantity,
+              price_contribution: item.ingredient_id
+                ? calcCost(ingredients.find(i => i.id === item.ingredient_id), Number(item.qty_edit))
+                : null
+            }).eq('id', item.id)
+          }
+        }
+
+        const newItems = Object.entries(addSelected).map(([id, s]) => {
+          const ing = ingredients.find(i => i.id === id)
+          if (!ing) return null
+          return {
             dining_id: record.id,
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '份',
-            price: item.price ? Number(item.price) : null
-          }))
-        )
+            name_zh: ing.name_zh,
+            name_original: ing.name_original || null,
+            category: ing.category || null,
+            quantity: ing.quantity,
+            unit: ing.unit || '个',
+            consumed_quantity: s.qty,
+            ingredient_id: id,
+            update_consumed: false,
+            price_contribution: calcCost(ing, s.qty)
+          }
+        }).filter(Boolean)
+        if (newItems.length > 0) await supabase.from('dining_items').insert(newItems)
+
+        const allItems =[...items, ...Object.entries(addSelected).map(([id, s]) => {
+          const ing = ingredients.find(i => i.id === id)
+          return { price_contribution: ing ? calcCost(ing, s.qty) : 0 }
+        })]
+        const newCost = allItems.reduce((s, i) => s + (i.price_contribution || 0), 0)
+        await supabase.from('dining_history').update({ home_cost: Math.round(newCost * 10) / 10 }).eq('id', record.id)
       }
+    } catch (e) {
+      console.error("Error saving record:", e)
+      alert("保存失败: " + e.message)
+    } finally {
+      setSaving(false)
+      onSaved()
+      onClose()
     }
-
-    if (record.dining_type === 'home') {
-      // 更新现有食材数量
-      for (const item of items) {
-        if (item.id) {
-          await supabase.from('dining_items').update({
-            consumed_quantity: Number(item.qty_edit) || item.consumed_quantity,
-            price_contribution: item.ingredient_id
-              ? calcCost(ingredients.find(i => i.id === item.ingredient_id) || {}, Number(item.qty_edit))
-              : null
-          }).eq('id', item.id)
-        }
-      }
-
-      // 追加新食材
-      const newItems = Object.entries(addSelected).map(([id, s]) => {
-        const ing = ingredients.find(i => i.id === id)
-        if (!ing) return null
-        return {
-          dining_id: record.id,
-          name_zh: ing.name_zh,
-          name_original: ing.name_original || null,
-          category: ing.category || null,
-          quantity: ing.quantity,
-          unit: ing.unit || '个',
-          consumed_quantity: s.qty,
-          ingredient_id: id,
-          update_consumed: false,
-          price_contribution: calcCost(ing, s.qty)
-        }
-      }).filter(Boolean)
-      if (newItems.length > 0) await supabase.from('dining_items').insert(newItems)
-
-      // 重新计算成本
-      const allItems = [...items, ...Object.entries(addSelected).map(([id, s]) => {
-        const ing = ingredients.find(i => i.id === id)
-        return { price_contribution: ing ? calcCost(ing, s.qty) : 0 }
-      })]
-      const newCost = allItems.reduce((s, i) => s + (i.price_contribution || 0), 0)
-      await supabase.from('dining_history').update({ home_cost: Math.round(newCost * 10) / 10 }).eq('id', record.id)
-    }
-
-    setSaving(false)
-    onSaved()
-    onClose()
   }
 
   return (
@@ -489,7 +401,7 @@ async function fetchIngredients() {
             {record.dining_type === 'out' && (
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>时间</div>
-                <input style={smallField} type="time" value={header.dined_time} onChange={e => setHeader(h => ({ ...h, dined_time: e.target.value }))} />
+                <input style={smallField} type="time" value={header.dined_time || ''} onChange={e => setHeader(h => ({ ...h, dined_time: e.target.value }))} />
               </div>
             )}
           </div>
@@ -502,7 +414,7 @@ async function fetchIngredients() {
               </div>
               <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>金额（¥）</div>
-                <input style={smallField} type="number" value={header.amount} onChange={e => setHeader(h => ({ ...h, amount: e.target.value }))} />
+                <input style={smallField} type="number" value={header.amount || ''} onChange={e => setHeader(h => ({ ...h, amount: e.target.value }))} />
               </div>
               <div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>菜品明细</div>
@@ -510,24 +422,24 @@ async function fetchIngredients() {
                   {items.map((item, i) => (
                     <div key={i} style={{ background: '#f8fafc', borderRadius: 9, padding: '8px 10px' }}>
                       <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}>
-                        <input style={{ ...smallField, flex: 1 }} value={item.name_zh || ''} onChange={e => setItems(items => { const n=[...items]; n[i]={...n[i],name_zh:e.target.value}; return n })} />
-                        <button onClick={() => setItems(items => items.filter((_, j) => j !== i))}
+                        <input style={{ ...smallField, flex: 1 }} value={item.name_zh || ''} onChange={e => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],name_zh:e.target.value}; return n })} />
+                        <button onClick={() => setItems(currentItems => currentItems.filter((_, j) => j !== i))}
                           style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>份数</div>
-                          <input style={smallField} type="number" value={item.quantity} onChange={e => setItems(items => { const n=[...items]; n[i]={...n[i],quantity:e.target.value}; return n })} />
+                          <input style={smallField} type="number" value={item.quantity || 1} onChange={e => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],quantity:e.target.value}; return n })} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单价¥</div>
-                          <input style={smallField} type="number" value={item.price || ''} onChange={e => setItems(items => { const n=[...items]; n[i]={...n[i],price:e.target.value}; return n })} />
+                          <input style={smallField} type="number" value={item.price || ''} onChange={e => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],price:e.target.value}; return n })} />
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setItems(i => [...i, { name_zh: '', quantity: 1, unit: '份', price: '' }])}
+                <button onClick={() => setItems(i =>[...i, { name_zh: '', quantity: 1, unit: '份', price: '' }])}
                   style={{ marginTop: 7, width: '100%', padding: '7px 0', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600 }}>
                   + 添加菜品
                 </button>
@@ -535,7 +447,6 @@ async function fetchIngredients() {
             </>
           )}
 
-          {/* 自炊食材编辑 */}
           {record.dining_type === 'home' && (
             <div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>已选食材</div>
@@ -549,19 +460,18 @@ async function fetchIngredients() {
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <button onClick={() => setItems(items => { const n=[...items]; n[i]={...n[i],qty_edit:Math.max(0.1,parseFloat(((n[i].qty_edit||1)-1).toFixed(1)))}; return n })}
+                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(0.1,parseFloat(((n[i].qty_edit||1)-1).toFixed(1)))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                       <span style={{ fontSize: 13, fontWeight: 600, minWidth: 36, textAlign: 'center' }}>{item.qty_edit}{item.unit}</span>
-                      <button onClick={() => setItems(items => { const n=[...items]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+1).toFixed(1))}; return n })}
+                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+1).toFixed(1))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
-                    <button onClick={() => setItems(items => items.filter((_, j) => j !== i))}
+                    <button onClick={() => setItems(currentItems => currentItems.filter((_, j) => j !== i))}
                       style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
                   </div>
                 ))}
               </div>
 
-              {/* 追加食材 */}
               <button onClick={() => setShowAddMore(!showAddMore)} style={{
                 marginTop: 8, width: '100%', padding: '7px 0', borderRadius: 8,
                 background: '#f0fdf4', color: '#16a34a', fontSize: 13, fontWeight: 600,
@@ -599,16 +509,14 @@ async function fetchIngredients() {
   )
 }
 
-// ── 食材选择弹窗（自炊用）──────────────────────────────────
 function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onClose, onSaved }) {
   const [ingredients, setIngredients] = useState([])
-  const [selected, setSelected] = useState({}) // { id: { qty, updateConsumed } }
+  const[selected, setSelected] = useState({})
   const [showConsumed, setShowConsumed] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchIngredients()
-    // 预填已有的食材
     if (existingItems?.length) {
       const pre = {}
       existingItems.forEach(item => {
@@ -618,7 +526,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
       })
       setSelected(pre)
     }
-  }, [])
+  },[dinedAt, existingItems])
 
   async function fetchIngredients() {
     const { data } = await supabase
@@ -626,7 +534,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
       .select(`*, purchase_item:purchase_item_id(price, original_price, purchase_history:history_id(purchased_at))`)
       .lte('created_at', `${dinedAt}T23:59:59`)
       .order('created_at', { ascending: false })
-    setIngredients(data || [])
+    setIngredients(data ||[])
   }
 
   const filtered = ingredients.filter(i =>
@@ -645,64 +553,61 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
     })
   }
 
-  const totalCost = Object.entries(selected).reduce((sum, [id, s]) => {
+  const totalCost = Object.entries(selected).reduce((sum,[id, s]) => {
     const ing = ingredients.find(i => i.id === id)
-    if (!ing) return sum
-    return sum + calcIngredientCost(ing, s.qty)
+    return sum + (ing ? calcIngredientCost(ing, s.qty) : 0)
   }, 0)
 
   async function save() {
     setSaving(true)
-    const entries = Object.entries(selected)
+    try {
+      const entries = Object.entries(selected)
+      for (const [ingId, s] of entries) {
+        const ing = ingredients.find(i => i.id === ingId)
+        if (!ing) continue
+        const cost = calcIngredientCost(ing, s.qty)
 
-    for (const [ingId, s] of entries) {
-      const ing = ingredients.find(i => i.id === ingId)
-      if (!ing) continue
-      const cost = calcIngredientCost(ing, s.qty)
+        if (s.existingItemId) {
+          await supabase.from('dining_items').update({
+            consumed_quantity: s.qty,
+            update_consumed: s.updateConsumed,
+            price_contribution: cost
+          }).eq('id', s.existingItemId)
+        } else {
+          await supabase.from('dining_items').insert({
+            dining_id: diningId,
+            name_zh: ing.name_zh,
+            name_original: ing.name_original || null,
+            category: ing.category || null,
+            quantity: ing.quantity,
+            unit: ing.unit || '个',
+            consumed_quantity: s.qty,
+            ingredient_id: ingId,
+            update_consumed: s.updateConsumed,
+            price_contribution: cost
+          })
+        }
 
-      if (s.existingItemId) {
-        // 更新已有记录
-        await supabase.from('dining_items').update({
-          consumed_quantity: s.qty,
-          update_consumed: s.updateConsumed,
-          price_contribution: cost
-        }).eq('id', s.existingItemId)
-      } else {
-        // 新增
-        await supabase.from('dining_items').insert({
-          dining_id: diningId,
-          name_zh: ing.name_zh,
-          name_original: ing.name_original || null,
-          category: ing.category || null,
-          quantity: ing.quantity,
-          unit: ing.unit || '个',
-          consumed_quantity: s.qty,
-          ingredient_id: ingId,
-          update_consumed: s.updateConsumed,
-          price_contribution: cost
-        })
-      }
-
-      // 更新食材消耗
-      if (s.updateConsumed) {
-        const newConsumed = Math.min(
-          (ing.consumed_quantity || 0) + s.qty,
-          ing.quantity || 0
-        )
-        const isFullyConsumed = newConsumed >= (ing.quantity || 0)
-        await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingId)
-        if (ing.purchase_item_id && isFullyConsumed) {
-          await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
+        if (s.updateConsumed) {
+          const newConsumed = Math.min(
+            (ing.consumed_quantity || 0) + s.qty,
+            ing.quantity || 0
+          )
+          const isFullyConsumed = newConsumed >= (ing.quantity || 0)
+          await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingId)
+          if (ing.purchase_item_id && isFullyConsumed) {
+            await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
+          }
         }
       }
+      await supabase.from('dining_history').update({ home_cost: Math.round(totalCost * 10) / 10 }).eq('id', diningId)
+    } catch (e) {
+      alert("保存失败: " + e.message)
+    } finally {
+      setSaving(false)
+      onSaved()
+      onClose()
     }
-
-    // 更新自炊成本
-    await supabase.from('dining_history').update({ home_cost: Math.round(totalCost * 10) / 10 }).eq('id', diningId)
-
-    setSaving(false)
-    onSaved()
-    onClose()
   }
 
   return (
@@ -755,7 +660,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 500 }}>{ing.name_zh}</div>
                     <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                      剩余 {remaining}{ing.unit}
+                      剩余 {remaining.toFixed(2)}{ing.unit}
                       {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}/${ing.quantity}${ing.unit}`}
                     </div>
                     {isSelected && (
@@ -769,7 +674,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
                               style={{ width: 60, textAlign: 'center', ...smallField }} />
                             <span style={{ fontSize: 13, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, (s[ing.id]?.qty || 1) + 1) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, (s[ing.id]?.qty || 1) + 1) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                           </div>
                           {cost > 0 && <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
@@ -802,30 +707,30 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
   )
 }
 
-// ── 录入弹窗 ──────────────────────────────────────────────
 function AddDiningModal({ onClose, onSaved }) {
-  const [diningType, setDiningType] = useState(null)
+  const[diningType, setDiningType] = useState(null)
   const [mealTime, setMealTime] = useState(null)
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])
   const [dinedTime, setDinedTime] = useState('')
-  const [memo, setMemo] = useState('')
-  const [pendingPhotos, setPendingPhotos] = useState([]) // 待上传到整条履历的照片
-  const [manualDishes, setManualDishes] = useState([])   // 手动追加的菜品（两种类型通用）
-
-  // 自炊食材选择
-  const [homeSelected, setHomeSelected] = useState({})
+  const[memo, setMemo] = useState('')
+  const [manualDishes, setManualDishes] = useState([])
+  const[pendingPhotos, setPendingPhotos] = useState([]) // { file: File, url: string }[]
+  
+  const[homeSelected, setHomeSelected] = useState({})
   const [ingredients, setIngredients] = useState([])
-  const [loadingIng, setLoadingIng] = useState(false)
+  const[loadingIng, setLoadingIng] = useState(false)
 
-  // 外食
   const [outMode, setOutMode] = useState(null)
   const [storeName, setStoreName] = useState('')
-  const [storeNameOriginal, setStoreNameOriginal] = useState('')
+  const[storeNameOriginal, setStoreNameOriginal] = useState('')
   const [amount, setAmount] = useState('')
-  const [outItems, setOutItems] = useState([])
+  const[outItems, setOutItems] = useState([])
   const [billData, setBillData] = useState(null)
-  const [loading, setLoading] = useState(false)
+  
+  // States to prevent button clashing and show progress
+  const [loading, setLoading] = useState(false) 
   const [saving, setSaving] = useState(false)
+  const [saveText, setSaveText] = useState('保存记录')
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -863,20 +768,19 @@ function AddDiningModal({ onClose, onSaved }) {
     if (diningType === 'home') fetchIngredients()
   }, [diningType, dinedAt])
 
-async function fetchIngredients() {
-  setLoadingIng(true)
-  const { data } = await supabase
-    .from('ingredients')
-    .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
-    .order('created_at', { ascending: false })
-  // 只保留小票日期 <= 餐食日期的食材（没有小票日期的也显示）
-  setIngredients((data || []).filter(i => {
-    const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
-    if (!purchasedAt) return true // 手动添加的没有小票日期，允许显示
-    return purchasedAt <= dinedAt
-  }))
-  setLoadingIng(false)
-}
+  async function fetchIngredients() {
+    setLoadingIng(true)
+    const { data } = await supabase
+      .from('ingredients')
+      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .order('created_at', { ascending: false })
+    setIngredients((data ||[]).filter(i => {
+      const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
+      if (!purchasedAt) return true
+      return purchasedAt <= dinedAt
+    }))
+    setLoadingIng(false)
+  }
 
   function calcCost(ing, qty) {
     const price = ing.purchase_item?.price
@@ -886,15 +790,13 @@ async function fetchIngredients() {
 
   const totalHomeCost = Object.entries(homeSelected).reduce((sum, [id, s]) => {
     const ing = ingredients.find(i => i.id === id)
-    if (!ing) return sum
-    return sum + calcCost(ing, s.qty)
+    return sum + (ing ? calcCost(ing, s.qty) : 0)
   }, 0)
 
   async function recognizeBill(files) {
-    const [billFile, setBillFile] = useState(null)
     setLoading(true)
     try {
-      const parts = []
+      const parts =[]
       for (const file of files) {
         const base64 = await fileToBase64(file)
         parts.push({ type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } })
@@ -909,7 +811,7 @@ async function fetchIngredients() {
         if (result.dined_at) setDinedAt(result.dined_at)
         if (result.dined_time) setDinedTime(result.dined_time)
         if (result.amount) setAmount(String(result.amount))
-        setOutItems((result.items || []).map(i => ({ ...i, price: i.price || '' })))
+        setOutItems((result.items ||[]).map(i => ({ ...i, price: i.price || '' })))
       }
     } catch (e) { alert('识别失败：' + e.message) }
     setLoading(false)
@@ -918,7 +820,7 @@ async function fetchIngredients() {
   async function recognizeOutDish(files) {
     setLoading(true)
     try {
-      const parts = []
+      const parts =[]
       for (const file of files) {
         const base64 = await fileToBase64(file)
         parts.push({ type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } })
@@ -926,91 +828,138 @@ async function fetchIngredients() {
       parts.push({ type: 'text', text: `识别图片中的餐厅菜品（支持中日英文），输出JSON数组：[{"name_zh":"中文名","name_original":"原文","quantity":1,"unit":"份"}]只输出JSON数组。` })
       const text = await callAI([{ role: 'user', content: parts }])
       const result = parseJSON(text)
-      if (Array.isArray(result)) setOutItems(prev => [...prev, ...result.map(i => ({ ...i, price: '' }))])
+      if (Array.isArray(result)) {
+        setOutItems(prev =>[...prev, ...result.map(i => ({ ...i, price: '' }))])
+      }
     } catch (e) { alert('识别失败：' + e.message) }
     setLoading(false)
   }
 
-  const [recognizedFiles, setRecognizedFiles] = useState([]) // 识别时使用的图片文件
-
   const setOutItemField = useCallback((i, k, v) => {
     setOutItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
-  }, [])
+  },[])
 
   const canSave = diningType && (
     diningType === 'home' ? mealTime : (storeName.trim() && dinedAt && amount)
   )
 
+  // --- BUG FIX: Use sequential uploading to avoid network hanging on massive files ---
   async function save() {
     if (diningType === 'out' && (!storeName.trim() || !dinedAt || !amount)) {
       return alert('外食记录需要填写店名、就餐日期和金额')
     }
     setSaving(true)
-    const { data: dining } = await supabase.from('dining_history').insert({
-      dining_type: diningType,
-      meal_time: mealTime || null,
-      dined_at: dinedAt,
-      dined_time: diningType === 'out' ? (dinedTime || null) : null,
-      store_name: diningType === 'out' ? storeName : null,
-      store_name_original: diningType === 'out' ? storeNameOriginal : null,
-      amount: diningType === 'out' && amount ? Number(amount) : null,
-      home_cost: diningType === 'home' && totalHomeCost > 0 ? Math.round(totalHomeCost * 10) / 10 : null,
-      memo: memo || null
-    }).select().single()
+    setSaveText('保存数据中...')
 
-    if (dining) {
-      if (diningType === 'out' && outItems.length > 0) {
-        await supabase.from('dining_items').insert(
-          outItems.filter(i => i.name_zh?.trim()).map(item => ({
-            dining_id: dining.id,
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '份',
-            price: item.price ? Number(item.price) : null
-          }))
-        )
-      }
+    try {
+      const { data: dining } = await supabase.from('dining_history').insert({
+        dining_type: diningType,
+        meal_time: mealTime || null,
+        dined_at: dinedAt,
+        dined_time: diningType === 'out' ? (dinedTime || null) : null,
+        store_name: diningType === 'out' ? storeName : null,
+        store_name_original: diningType === 'out' ? storeNameOriginal : null,
+        amount: diningType === 'out' && amount ? Number(amount) : null,
+        home_cost: diningType === 'home' && totalHomeCost > 0 ? Math.round(totalHomeCost * 10) / 10 : null,
+        memo: memo || null
+      }).select().single()
 
-      if (diningType === 'home' && Object.keys(homeSelected).length > 0) {
-        const items = Object.entries(homeSelected).map(([id, s]) => {
-          const ing = ingredients.find(i => i.id === id)
-          if (!ing) return null
-          return {
+      if (dining) {
+        const dishesToInsert =[]
+
+        if (diningType === 'out' && outItems.length > 0) {
+          outItems.filter(i => i.name_zh?.trim()).forEach(item => {
+            dishesToInsert.push({
+              dining_id: dining.id,
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '份',
+              price: item.price ? Number(item.price) : null
+            })
+          })
+        }
+
+        if (diningType === 'home' && Object.keys(homeSelected).length > 0) {
+          Object.entries(homeSelected).forEach(([id, s]) => {
+            const ing = ingredients.find(i => i.id === id)
+            if (!ing) return
+            dishesToInsert.push({
+              dining_id: dining.id,
+              name_zh: ing.name_zh,
+              name_original: ing.name_original || null,
+              category: ing.category || null,
+              quantity: ing.quantity,
+              unit: ing.unit || '个',
+              consumed_quantity: s.qty,
+              ingredient_id: id,
+              update_consumed: s.updateConsumed || false,
+              price_contribution: calcCost(ing, s.qty)
+            })
+          })
+        }
+
+        manualDishes.filter(d => d.name_zh.trim()).forEach(d => {
+          dishesToInsert.push({
             dining_id: dining.id,
-            name_zh: ing.name_zh,
-            name_original: ing.name_original || null,
-            category: ing.category || null,
-            quantity: ing.quantity,
-            unit: ing.unit || '个',
-            consumed_quantity: s.qty,
-            ingredient_id: id,
-            update_consumed: s.updateConsumed || false,
-            price_contribution: calcCost(ing, s.qty)
+            name_zh: d.name_zh,
+            quantity: Number(d.quantity) || 1,
+            unit: d.unit || '人份',
+            price: d.price ? Number(d.price) : null
+          })
+        })
+
+        if (dishesToInsert.length > 0) {
+          await supabase.from('dining_items').insert(dishesToInsert)
+        }
+
+        if (diningType === 'home') {
+          for (const[id, s] of Object.entries(homeSelected)) {
+            if (!s.updateConsumed) continue
+            const ing = ingredients.find(i => i.id === id)
+            if (!ing) continue
+            const newConsumed = parseFloat(Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0).toFixed(2))
+            const isFully = newConsumed >= (ing.quantity || 0)
+            await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', id)
+            if (ing.purchase_item_id && isFully) {
+              await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
+            }
           }
-        }).filter(Boolean)
-        if (items.length > 0) await supabase.from('dining_items').insert(items)
-
-        // 更新消耗量
-        for (const [id, s] of Object.entries(homeSelected)) {
-          if (!s.updateConsumed) continue
-          const ing = ingredients.find(i => i.id === id)
-          if (!ing) continue
-          const newConsumed = Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0)
-          const isFully = newConsumed >= (ing.quantity || 0)
-          await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', id)
-          if (ing.purchase_item_id && isFully) {
-            await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
+        }
+        
+        // 依次上传照片（防止 Promise.all 死锁网络请求）
+        const photosToUpload = pendingPhotos.filter(p => p && p.file)
+        if (photosToUpload.length > 0) {
+          let count = 1;
+          for (const { file } of photosToUpload) {
+            setSaveText(`上传照片中 (${count}/${photosToUpload.length})...`)
+            try {
+              const { filePath, url } = await uploadPhoto(supabase, file, `dining/${dining.id}`)
+              await supabase.from('dining_photos').insert({
+                dining_id: dining.id,
+                dining_item_id: null,
+                file_path: filePath,
+                url
+              })
+            } catch (e) {
+              console.error('照片上传失败', e)
+            }
+            count++;
           }
         }
       }
+      
+      onSaved()
+      onClose() // 一切完成后才关闭，防止组件提前卸载阻断流程
+
+    } catch (e) {
+      alert("保存失败: " + e.message)
+    } finally {
+      setSaving(false)
+      setSaveText('保存记录')
     }
-
-    setSaving(false)
-    onSaved()
-    onClose()
   }
-
+  // --- BUG FIX ENDS HERE ---
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
@@ -1020,13 +969,11 @@ async function fetchIngredients() {
           <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
 
-        {/* 日期 */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>就餐日期</div>
-          <input style={field} type="date" value={dinedAt} onChange={e => { setDinedAt(e.target.value); setIngPage(0) }} />
+          <input style={field} type="date" value={dinedAt} onChange={e => setDinedAt(e.target.value)} />
         </div>
 
-        {/* 餐次 */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>餐次{diningType === 'out' ? '（可选）' : '*'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
@@ -1043,7 +990,6 @@ async function fetchIngredients() {
           </div>
         </div>
 
-        {/* 类型 */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>类型</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1057,7 +1003,6 @@ async function fetchIngredients() {
           </div>
         </div>
 
-        {/* 自炊：直接选食材 */}
         {diningType === 'home' && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8 }}>
@@ -1079,7 +1024,6 @@ async function fetchIngredients() {
           </div>
         )}
 
-        {/* 外食（保持原有逻辑不变） */}
         {diningType === 'out' && (
           <>
             <div style={{ marginBottom: 14 }}>
@@ -1104,9 +1048,11 @@ async function fetchIngredients() {
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} id="bill-input"
                       onChange={e => {
                         const files = Array.from(e.target.files)
-                        setBillFile(files[0] || null)
+                        const newItems = files.map(f => ({ file: f, url: URL.createObjectURL(f) }))
+                        setPendingPhotos(p => [...p, ...newItems]) 
+                        e.target.value = ''
                         recognizeBill(files)
-                      }} />
+                      }}/>
                     <button onClick={() => document.getElementById('bill-input').click()} style={{
                       width: '100%', padding: '24px 0', borderRadius: 12, border: '2px dashed #fed7aa',
                       background: '#fff7ed', color: '#9a3412', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6
@@ -1143,17 +1089,6 @@ async function fetchIngredients() {
                         </div>
                       </div>
                     ))}
-                    {billFile && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569', marginTop: 6 }}>
-                        <input type="checkbox" defaultChecked
-                          onChange={e => {
-                            if (e.target.checked) setPendingPhotos(p => [...p, billFile])
-                            else setPendingPhotos(p => p.filter(f => f !== billFile))
-                          }}
-                          style={{ width: 14, height: 14, accentColor: '#f97316' }} />
-                        同时上传账单图片到餐饮记录
-                      </label>
-                    )}
                     <button onClick={() => { setBillData(null); setOutItems([]) }}
                       style={{ padding: '6px 0', borderRadius: 7, background: '#f1f5f9', color: '#475569', fontSize: 13 }}>重新识别</button>
                   </div>
@@ -1170,7 +1105,9 @@ async function fetchIngredients() {
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} id="out-dish-input"
                       onChange={e => {
                         const files = Array.from(e.target.files)
-                        setRecognizedFiles(prev => [...prev, ...files])
+                        const newItems = files.map(f => ({ file: f, url: URL.createObjectURL(f) }))
+                        setPendingPhotos(p => [...p, ...newItems]) 
+                        e.target.value = ''
                         recognizeOutDish(files)
                       }} />
                     <button onClick={() => document.getElementById('out-dish-input').click()} style={{
@@ -1192,17 +1129,6 @@ async function fetchIngredients() {
                         ))}
                       </div>
                     )}
-                    {recognizedFiles.length > 0 && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#475569', marginTop: 8 }}>
-                        <input type="checkbox" defaultChecked
-                          onChange={e => {
-                            if (e.target.checked) setPendingPhotos(p => [...p, ...recognizedFiles])
-                            else setPendingPhotos(p => p.filter(f => !recognizedFiles.includes(f)))
-                          }}
-                          style={{ width: 14, height: 14, accentColor: '#f97316' }} />
-                        同时上传此图片到餐饮记录
-                      </label>
-                    )}
                   </div>
                 )}
               </div>
@@ -1220,7 +1146,7 @@ async function fetchIngredients() {
             </div>
           </>
         )}
-        {/* 手动追加菜品 */}
+        
           {diningType && (
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
@@ -1258,7 +1184,7 @@ async function fetchIngredients() {
                     </div>
                   </div>
                 ))}
-                <button onClick={() => setManualDishes(d => [...d, { name_zh: '', quantity: 1, unit: '人份', price: '' }])}
+                <button onClick={() => setManualDishes(d =>[...d, { name_zh: '', quantity: 1, unit: '人份', price: '' }])}
                   style={{ padding: '7px 0', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600 }}>
                   + 添加菜品
                 </button>
@@ -1266,70 +1192,82 @@ async function fetchIngredients() {
             </div>
           )}
           
-
-          {/* 上传照片 */}
-          {diningType && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                上传照片（可选）
+            {diningType && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 8 }}>
+                  上传照片（可选）
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {pendingPhotos.map((item, i) => (
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img
+                        src={item.url}
+                        alt=""
+                        style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1.5px solid #e2e8f0', display: 'block' }}
+                      />
+                      <button
+                        onClick={() => setPendingPhotos(p => p.filter((_, j) => j !== i))}
+                        style={{
+                          position: 'absolute', top: -6, right: -6,
+                          width: 20, height: 20, borderRadius: '50%',
+                          background: '#ef4444', color: '#fff', fontSize: 14, lineHeight: 1,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: '2px solid #fff'
+                        }}>×</button>
+                    </div>
+                  ))}
+                  <label style={{
+                    width: 72, height: 72, borderRadius: 8,
+                    border: '1.5px dashed #cbd5e1', background: '#f8fafc',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', cursor: 'pointer', gap: 3, flexShrink: 0
+                  }}>
+                    <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                      onChange={e => {
+                        const newItems = Array.from(e.target.files).map(f => ({
+                          file: f,
+                          url: URL.createObjectURL(f)
+                        }))
+                        setPendingPhotos(p =>[...p, ...newItems])
+                        e.target.value = ''
+                      }} />
+                    <span style={{ fontSize: 24, color: '#94a3b8' }}>+</span>
+                    <span style={{ fontSize: 10, color: '#94a3b8' }}>照片</span>
+                  </label>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {pendingPhotos.map((file, i) => (
-                  <div key={i} style={{ position: 'relative' }}>
-                    <img src={URL.createObjectURL(file)} alt=""
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1.5px solid #e2e8f0' }} />
-                    <button onClick={() => setPendingPhotos(p => p.filter((_, j) => j !== i))} style={{
-                      position: 'absolute', top: -6, right: -6, width: 18, height: 18,
-                      borderRadius: '50%', background: '#ef4444', color: '#fff',
-                      fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>×</button>
-                  </div>
-                ))}
-                <label style={{
-                  width: 64, height: 64, borderRadius: 8, border: '1.5px dashed #cbd5e1',
-                  background: '#f8fafc', display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 2
-                }}>
-                  <input type="file" accept="image/*" multiple style={{ display: 'none' }}
-                    onChange={e => { setPendingPhotos(p => [...p, ...Array.from(e.target.files)]); e.target.value = '' }} />
-                  <span style={{ fontSize: 20, color: '#94a3b8' }}>+</span>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>照片</span>
-                </label>
-              </div>
-            </div>
-          )}
+            )}
 
         <div style={{ marginBottom: 14 }}>
           <input style={field} value={memo} onChange={e => setMemo(e.target.value)} placeholder="备注（可选）" />
         </div>
 
-        <button onClick={save} disabled={!canSave || saving} style={{
+        <button onClick={save} disabled={!canSave || saving || loading} style={{
           width: '100%', padding: '13px 0', borderRadius: 12,
-          background: canSave ? (diningType === 'home' ? '#16a34a' : '#f97316') : '#e2e8f0',
-          color: canSave ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700
-        }}>{saving ? '保存中...' : '保存记录'}</button>
+          background: (canSave && !loading) ? (diningType === 'home' ? '#16a34a' : '#f97316') : '#e2e8f0',
+          color: (canSave && !loading) ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700
+        }}>{saving ? saveText : (loading ? '识别中...' : '保存记录')}</button>
       </div>
     </div>
   )
 }
 
-// ── 主页面 ────────────────────────────────────────────────
 export default function DiningHistory() {
-  const [records, setRecords] = useState([])
+  const[records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [expanded, setExpanded] = useState({})
-  const [collapsedYears, setCollapsedYears] = useState({})
-  const [collapsedMonths, setCollapsedMonths] = useState({})
+  const[collapsedYears, setCollapsedYears] = useState({})
+  const[collapsedMonths, setCollapsedMonths] = useState({})
   const [editingRecord, setEditingRecord] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
-  const [selectingIngredients, setSelectingIngredients] = useState(null) // { diningId, dinedAt, mealTime, existingItems }
+  const [selectingIngredients, setSelectingIngredients] = useState(null)
   const [photos, setPhotos] = useState({})
-  const [uploadingKey, setUploadingKey] = useState(null)
-  const [filterType, setFilterType] = useState('all') // all | home | out
+  const[uploadingKey, setUploadingKey] = useState(null)
+  const [filterType, setFilterType] = useState('all')
 
-  useEffect(() => { fetchRecords() }, [])
+  useEffect(() => { fetchRecords() },[])
 
   async function fetchRecords() {
     setLoading(true)
@@ -1337,7 +1275,9 @@ export default function DiningHistory() {
       .from('dining_history')
       .select(`*, dining_items(*)`)
       .order('dined_at', { ascending: false })
-    setRecords(data || [])
+      .order('created_at', { ascending: false })
+
+    setRecords(data ||[])
     if (data?.length) await fetchPhotos(data.map(r => r.id))
     setLoading(false)
   }
@@ -1360,7 +1300,7 @@ export default function DiningHistory() {
     setUploadingKey(key)
     try {
       const folder = itemId ? `dining/${diningId}/items` : `dining/${diningId}`
-      const newPhotos = []
+      const newPhotos =[]
       for (const file of files) {
         const { filePath, url } = await uploadPhoto(supabase, file, folder)
         const { data } = await supabase.from('dining_photos').insert({
@@ -1368,7 +1308,7 @@ export default function DiningHistory() {
         }).select().single()
         if (data) newPhotos.push(data)
       }
-      setPhotos(prev => ({ ...prev, [key]: [...(prev[key] || []), ...newPhotos] }))
+      setPhotos(prev => ({ ...prev, [key]: [...(prev[key] ||[]), ...newPhotos] }))
     } catch (e) { alert('上传失败：' + e.message) }
     setUploadingKey(null)
   }
@@ -1378,7 +1318,7 @@ export default function DiningHistory() {
       await deletePhoto(supabase, photo.file_path)
       await supabase.from('dining_photos').delete().eq('id', photo.id)
       const key = photo.dining_item_id ? `${photo.dining_id}-item-${photo.dining_item_id}` : photo.dining_id
-      setPhotos(prev => ({ ...prev, [key]: (prev[key] || []).filter(p => p.id !== photo.id) }))
+      setPhotos(prev => ({ ...prev, [key]: (prev[key] ||[]).filter(p => p.id !== photo.id) }))
     } catch (e) { alert('删除失败：' + e.message) }
   }
 
@@ -1394,10 +1334,6 @@ export default function DiningHistory() {
     })))
   }
 
-  function handleIngredientsSaved() {
-    fetchRecords()
-  }
-
   const filtered = records.filter(r => {
     if (filterType !== 'all' && r.dining_type !== filterType) return false
     if (!search) return true
@@ -1407,7 +1343,6 @@ export default function DiningHistory() {
       r.dining_items?.some(i => i.name_zh?.toLowerCase().includes(s))
   })
 
-  // 按年月分组
   const groupedByYear = {}
   filtered.forEach(r => {
     const d = new Date(r.dined_at)
@@ -1507,7 +1442,7 @@ export default function DiningHistory() {
 
                           {!isMonthCollapsed && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                              {Object.entries(days).sort(([a], [b]) => b.localeCompare(a)).map(([day, dayRecords]) => (
+                              {Object.entries(days).sort(([a],[b]) => b.localeCompare(a)).map(([day, dayRecords]) => (
                                 <div key={day}>
                                   <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>
                                     {new Date(day).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
@@ -1519,7 +1454,6 @@ export default function DiningHistory() {
                                         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                         borderLeft: `4px solid ${r.dining_type === 'home' ? '#16a34a' : '#f97316'}`
                                       }}>
-                                        {/* 头部 */}
                                         <div style={{ padding: '12px 14px' }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))}>
@@ -1559,21 +1493,18 @@ export default function DiningHistory() {
                                           </div>
                                         </div>
 
-                                        {/* 展开内容 */}
                                         {expanded[r.id] && (
                                           <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                                            {/* 餐饮照片在最前 */}
                                             <div style={{ padding: '10px 14px', borderBottom: '1px solid #f8fafc' }}>
                                               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>餐饮照片</div>
                                               <PhotoViewer
-                                                photos={photos[r.id] || []}
+                                                photos={photos[r.id] ||[]}
                                                 onAdd={files => handleAddPhotos(files, r.id)}
                                                 onDelete={handleDeletePhoto}
                                                 uploading={uploadingKey === r.id}
                                               />
                                             </div>
 
-                                            {/* 食材/菜品列表 */}
                                             {r.dining_items?.map((item, idx) => (
                                               <div key={idx} style={{
                                                 padding: '10px 14px', borderBottom: '1px solid #f8fafc',
@@ -1650,7 +1581,7 @@ export default function DiningHistory() {
           mealTime={selectingIngredients.mealTime}
           existingItems={selectingIngredients.existingItems}
           onClose={() => setSelectingIngredients(null)}
-          onSaved={handleIngredientsSaved}
+          onSaved={fetchRecords}
         />
       )}
     </div>
