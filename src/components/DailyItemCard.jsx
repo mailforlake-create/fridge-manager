@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
+//import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
+import { useSettings } from '../context/SettingsContext'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
+  const { settings } = useSettings()
+const DAILY_CATS = settings.daily_categories
+const DAILY_UNITS = settings.daily_units
+const DAILY_LOCS = settings.daily_locations
   const [syncPurchase, setSyncPurchase] = useState(true)
   const [editing, setEditing] = useState(false)
   const [consuming, setConsuming] = useState(false)
@@ -96,10 +101,10 @@ async function saveEdit() {
         </div>
         <select style={field} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
-          {DAILY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          {DAILY_CATS.map(c => <option key={c}>{c}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 8 }}>
-          {DAILY_LOCATIONS.map(([v, l]) => (
+          {DAILY_LOCS.map(([v, l]) => (
             <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
               flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13,
               background: form.location === v ? '#3b82f6' : '#f1f5f9',

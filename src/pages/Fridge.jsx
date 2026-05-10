@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase'
 import IngredientCard from '../components/IngredientCard'
 import DailyItems from './DailyItems'
 import { recognizePhoto, callAI, fileToBase64, calcExpiry } from '../lib/aiRecognition'
-import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
+//import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
+import { useSettings } from '../context/SettingsContext'
 
 const EMPTY_FORM = {
   name_zh: '', name_original: '', category: '',
@@ -85,12 +86,12 @@ function ManualAddModal({ onClose, onSaved }) {
               <input style={field} type="number" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></div>
             <div style={{ flex: 1 }}><div style={small}>单位</div>
               <select style={field} value={form.unit} onChange={e => set('unit', e.target.value)}>
-                {UNITS.map(u => <option key={u}>{u}</option>)}</select></div>
+                {FOOD_UNITS.map(u => <option key={u}>{u}</option>)}</select></div>
           </div>
           <div><div style={small}>分类</div>
             <select style={field} value={form.category} onChange={e => set('category', e.target.value)}>
               <option value="">选择分类</option>
-              {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
             </select></div>
           <div>
             <div style={small}>保质期</div>
@@ -133,6 +134,7 @@ function PhotoAddModal({ onClose, onSaved }) {
   const [selected, setSelected] = useState({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { settings } = useSettings()
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -146,7 +148,7 @@ function PhotoAddModal({ onClose, onSaved }) {
   async function handlePhoto(file) {
     setLoading(true)
     try {
-      const items = await recognizePhoto(file)
+      const items = await recognizePhoto(file, settings)
       setAiItems(items.map(i => ({ ...i, mfg_date: '', shelf_days: '' })))
       const sel = {}
       items.forEach((_, i) => { sel[i] = true })
@@ -241,13 +243,13 @@ function PhotoAddModal({ onClose, onSaved }) {
                           onChange={e => setItemField(i, 'quantity', e.target.value)} />
                         <select style={{ ...smallField, flex: 1 }} value={item.unit}
                           onChange={e => setItemField(i, 'unit', e.target.value)}>
-                          {UNITS.map(u => <option key={u}>{u}</option>)}
+                          {FOOD_UNITS.map(u => <option key={u}>{u}</option>)}
                         </select>
                       </div>
                       <select style={smallField} value={item.category || ''}
                         onChange={e => setItemField(i, 'category', e.target.value)}>
                         <option value="">分类</option>
-                        {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
                       </select>
                       <input style={smallField} type="date" value={item.expiry_date || ''}
                         onChange={e => setItemField(i, 'expiry_date', e.target.value)} />
@@ -344,7 +346,7 @@ function BarcodeModal({ onClose, onSaved }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <input style={{ ...field, flex: 1 }} type="number" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               <select style={{ ...field, flex: 1 }} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-                {UNITS.map(u => <option key={u}>{u}</option>)}
+                {FOOD_UNITS.map(u => <option key={u}>{u}</option>)}
               </select>
             </div>
             <input style={field} type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
@@ -370,6 +372,10 @@ export default function Fridge() {
   const [collapsedYears, setCollapsedYears] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [showConsumed, setShowConsumed] = useState(false)
+  const { settings } = useSettings()
+  const FOOD_CATS = settings.food_categories
+  const FOOD_UNITS = settings.food_units
+  const FOOD_LOCS = settings.food_locations
 
   useEffect(() => { if (tab === 'food') fetchItems() }, [tab])
 

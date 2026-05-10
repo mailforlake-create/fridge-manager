@@ -41,10 +41,12 @@ export function calcExpiry(mfgDate, shelfDays) {
 }
 
 export async function recognizePhoto(file) {
+  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
+  const foodUnits = (categories.food_units || UNITS).join('/')
   const base64 = await fileToBase64(file)
   const prompt = `你是食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
-name_zh(中文名), name_original(原文，可空), category(蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/其他/药品),
-quantity(数字), unit(个/包/瓶/袋/克/毫升/升/根/片/块), expiry_date(YYYY-MM-DD或空字符串)
+name_zh(中文名), name_original(原文，可空), category(${foodCats}),
+quantity(数字), unit(${foodUnits}), expiry_date(YYYY-MM-DD或空字符串)
 只输出JSON数组。`
   const text = await callAI([{
     role: 'user',
@@ -56,7 +58,15 @@ quantity(数字), unit(个/包/瓶/袋/克/毫升/升/根/片/块), expiry_date(
   return parseIngredients(text)
 }
 
-export async function recognizeReceipt(file) {
+export async function recognizeReceipt(file, categories = {}) {
+  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
+  const dailyCats = (categories.daily_categories || DAILY_CATEGORIES).join('/')
+  const foodUnits = (categories.food_units || UNITS).join('/')
+  const dailyUnits = (categories.daily_units || DAILY_UNITS).join('/')
+  const allUnits = [...new Set([
+    ...(categories.food_units || UNITS),
+    ...(categories.daily_units || DAILY_UNITS)
+  ])].join('/')
   const base64 = await fileToBase64(file)
   const mediaType = file.type || 'image/jpeg'
 
@@ -109,7 +119,7 @@ export async function recognizeReceipt(file) {
   const step2Text = await callAI([{
     role: 'user',
     content: `将以下日文/英文商品名翻译成中文并分类，输出JSON数组，每项包含：
-{"name_original": "原文", "name_zh": "中文名", "category": "蔬菜/水果/肉类/海鲜/乳制品/饮料/调味料/冷冻食品/零食/清洁用品/洗护用品/厨房用品/纸品/药品/日用杂货/其他", "unit": "个/包/瓶/袋/克/毫升/升/根/片/块"}
+{"name_original":"原文","name_zh":"中文名","category":"${foodCats}/${dailyCats}/其他","unit":"${allUnits}"}
 商品列表：
 ${names}
 只输出JSON数组。`

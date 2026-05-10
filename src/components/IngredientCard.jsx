@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
+//import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
+import { useSettings } from '../context/SettingsContext'
 
 function AddToDiningModal({ item, consumedQty, onClose }) {
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])
@@ -164,6 +165,11 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [showAddDining, setShowAddDining] = useState(false)
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
 
+  const { settings } = useSettings()
+const FOOD_CATS = settings.food_categories
+const FOOD_UNITS = settings.food_units
+const FOOD_LOCS = settings.food_locations
+
   const today = new Date()
   const expiry = item.expiry_date ? new Date(item.expiry_date) : null
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -325,7 +331,7 @@ async function saveEdit() {
             <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>单位</div>
             <select style={field} value={form.unit}
               onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-              {UNITS.map(u => <option key={u}>{u}</option>)}
+              {FOOD_UNITS.map(u => <option key={u}>{u}</option>)}
             </select>
           </div>
         </div>
@@ -333,14 +339,14 @@ async function saveEdit() {
           onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
           <option value="">选择分类</option>
-            {FOOD_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
         </select>
         <input style={field} type="date" value={form.expiry_date}
           onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
         <input style={field} value={form.memo}
           onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="备注（可选）" />
         <div style={{ display: 'flex', gap: 8 }}>
-          {LOCATIONS.map(([v, l]) => (
+          {FOOD_LOCS.map(([v, l]) => (
             <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
               flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 13,
               background: form.location === v ? '#16a34a' : '#f1f5f9',

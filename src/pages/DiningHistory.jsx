@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
+import { useSettings } from '../context/SettingsContext'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [ingSearch, setIngSearch] = useState('')
@@ -708,6 +709,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
 }
 
 function AddDiningModal({ onClose, onSaved }) {
+  const { settings } = useSettings()
   const[diningType, setDiningType] = useState(null)
   const [mealTime, setMealTime] = useState(null)
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])

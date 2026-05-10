@@ -1,20 +1,23 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { SettingsProvider } from './context/SettingsContext'
 import Layout from './components/Layout'
 import Fridge from './pages/Fridge'
-import ShoppingList from './pages/ShoppingList'
 import PurchaseHistory from './pages/PurchaseHistory'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/fridge" replace />} />
-          <Route path="fridge" element={<Fridge />} />
-          <Route path="shopping" element={<ShoppingList />} />
-          <Route path="history" element={<PurchaseHistory />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <SettingsProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Navigate to="/fridge" replace />} />
+            <Route path="fridge" element={<Fridge />} />
+            <Route path="history" element={<PurchaseHistory />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </SettingsProvider>
   )
 }
