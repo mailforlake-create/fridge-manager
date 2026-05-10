@@ -1,14 +1,25 @@
+import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, DAILY_UNITS, isDailyCategory } from './categories'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export async function callAI(messages) {
+export async function callAI(messages, aiConfig = {}) {
+  // 找到当前选中的模型 URL
+  const models = aiConfig.ai_models || []
+  const selectedName = aiConfig.ai_selected_model || ''
+  const selectedModel = models.find(m => m.name === selectedName) || models[0]
+  const modelUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent'
+
   const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({ max_tokens: 4096, messages })
+    body: JSON.stringify({
+      model_url: modelUrl,
+      max_tokens: Number(aiConfig.ai_max_tokens) || 4096,
+      messages
+    })
   })
   const data = await res.json()
   if (data.error) throw new Error(data.error)

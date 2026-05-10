@@ -224,6 +224,115 @@ export default function Settings() {
             </div>
           </div>
         ))}
+        {/* AI 配置 */}
+        <div style={{
+        background: '#fff', borderRadius: 12,
+        border: '1px solid #f1f5f9',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        overflow: 'hidden'
+        }}>
+        <div style={{
+            padding: '11px 14px', background: '#f8fafc',
+            borderBottom: '1px solid #f1f5f9',
+            display: 'flex', alignItems: 'center', gap: 8
+        }}>
+            <span style={{ fontSize: 18 }}>🤖</span>
+            <span style={{ fontWeight: 600, fontSize: 14, color: '#334155' }}>AI 识别配置</span>
+        </div>
+        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* 模型列表 */}
+            <div>
+            <div style={{ fontSize: 13, color: '#475569', fontWeight: 600, marginBottom: 8 }}>模型列表</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(localSettings.ai_models || []).map((model, i) => (
+                <div key={i} style={{
+                    background: localSettings.ai_selected_model === model.name ? '#f0fdf4' : '#f8fafc',
+                    border: `1.5px solid ${localSettings.ai_selected_model === model.name ? '#16a34a' : '#e2e8f0'}`,
+                    borderRadius: 10, padding: '10px 12px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button
+                        onClick={() => update('ai_selected_model', model.name)}
+                        style={{
+                            width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                            border: `2px solid ${localSettings.ai_selected_model === model.name ? '#16a34a' : '#cbd5e1'}`,
+                            background: localSettings.ai_selected_model === model.name ? '#16a34a' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                        {localSettings.ai_selected_model === model.name &&
+                            <span style={{ color: '#fff', fontSize: 11 }}>✓</span>}
+                        </button>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{model.name}</span>
+                        {localSettings.ai_selected_model === model.name &&
+                        <span style={{ fontSize: 11, color: '#16a34a' }}>当前使用</span>}
+                    </div>
+                    <button
+                        onClick={() => {
+                        const newModels = (localSettings.ai_models || []).filter((_, j) => j !== i)
+                        update('ai_models', newModels)
+                        if (localSettings.ai_selected_model === model.name && newModels.length > 0) {
+                            update('ai_selected_model', newModels[0].name)
+                        }
+                        }}
+                        style={{ background: '#fef2f2', color: '#ef4444', fontSize: 12, padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
+                        删除
+                    </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>模型名称</div>
+                    <input
+                        value={model.name}
+                        onChange={e => {
+                        const newModels = [...(localSettings.ai_models || [])]
+                        newModels[i] = { ...newModels[i], name: e.target.value }
+                        update('ai_models', newModels)
+                        }}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box' }} />
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, marginBottom: 2 }}>API URL</div>
+                    <input
+                        value={model.url}
+                        onChange={e => {
+                        const newModels = [...(localSettings.ai_models || [])]
+                        newModels[i] = { ...newModels[i], url: e.target.value }
+                        update('ai_models', newModels)
+                        }}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: 7, fontSize: 12, border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+                    </div>
+                </div>
+                ))}
+            </div>
+
+            {/* 添加新模型 */}
+            <button
+                onClick={() => {
+                const newModels = [...(localSettings.ai_models || []), { name: '', url: '' }]
+                update('ai_models', newModels)
+                }}
+                style={{
+                marginTop: 10, width: '100%', padding: '8px 0', borderRadius: 8,
+                background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600,
+                border: '1px dashed #cbd5e1'
+                }}>
+                + 添加模型
+            </button>
+            </div>
+
+            {/* 最大 Token */}
+            <div>
+            <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>最大输出 Token 数</div>
+            <input
+                type="number"
+                value={localSettings.ai_max_tokens || 4096}
+                onChange={e => update('ai_max_tokens', Number(e.target.value))}
+                style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 14,
+                border: '1.5px solid #e2e8f0', outline: 'none', boxSizing: 'border-box'
+                }} />
+            </div>
+        </div>
+        </div>
       </div>
 
       <div style={{ height: 40 }} />

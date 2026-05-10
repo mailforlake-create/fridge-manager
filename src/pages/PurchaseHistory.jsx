@@ -73,6 +73,12 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { settings } = useSettings()
+  const UNITS = settings.food_units || []
+  const FOOD_CATS = settings.food_categories || []
+  const DAILY_CATS = settings.daily_categories || []
+  const FOOD_CATEGORIES = FOOD_CATS  // 兼容旧代码
+  const DAILY_CATEGORIES = DAILY_CATS  // 兼容旧代码
+  const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -316,6 +322,7 @@ function ReceiptScanModal({ onClose, onSaved }) {
 }
 
 function ManualReceiptModal({ onClose, onSaved }) {
+  const isDailyCategory = (category) => DAILY_CATS.includes(category)
   const [header, setHeader] = useState({
     store_name: '',
     store_name_original: '',
@@ -614,6 +621,7 @@ function ManualReceiptModal({ onClose, onSaved }) {
 }
 
 export default function PurchaseHistory() {
+  const isDailyCategory = (category) => DAILY_CATS.includes(category)
   const [showAddItems, setShowAddItems] = useState(false)
   const [newItems, setNewItems] = useState([])
   const [showManualAdd, setShowManualAdd] = useState(false)

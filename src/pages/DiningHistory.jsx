@@ -738,15 +738,27 @@ function AddDiningModal({ onClose, onSaved }) {
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
   async function callAI(messages) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ max_tokens: 4096, messages })
+  const models = settings.ai_models || []
+  const selectedName = settings.ai_selected_model || ''
+  const selectedModel = models.find(m => m.name === selectedName) || models[0]
+  const modelUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent'
+
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({
+      model_url: modelUrl,
+      max_tokens: Number(settings.ai_max_tokens) || 4096,
+      messages
     })
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-    return data.content[0].text
-  }
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  return data.content[0].text
+}
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
