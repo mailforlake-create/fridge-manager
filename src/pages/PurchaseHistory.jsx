@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
-//import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, isDailyCategory } from '../lib/categories'
+import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 
 function calcExpiry(mfgDate, shelfDays) {
@@ -73,12 +73,12 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { settings } = useSettings()
-  const UNITS = settings.food_units || []
-  const FOOD_CATS = settings.food_categories || []
-  const DAILY_CATS = settings.daily_categories || []
-  const FOOD_CATEGORIES = FOOD_CATS  // 兼容旧代码
-  const DAILY_CATEGORIES = DAILY_CATS  // 兼容旧代码
-  const isDailyCategory = (category) => DAILY_CATS.includes(category)
+const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
+const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
+const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
+const FOOD_CATEGORIES = FOOD_CATS
+const DAILY_CATEGORIES = DAILY_CATS
+const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -621,7 +621,6 @@ function ManualReceiptModal({ onClose, onSaved }) {
 }
 
 export default function PurchaseHistory() {
-  const isDailyCategory = (category) => DAILY_CATS.includes(category)
   const [showAddItems, setShowAddItems] = useState(false)
   const [newItems, setNewItems] = useState([])
   const [showManualAdd, setShowManualAdd] = useState(false)
@@ -640,9 +639,13 @@ export default function PurchaseHistory() {
   const [syncToDining, setSyncToDining] = useState(true)
   const [syncDeleteStock, setSyncDeleteStock] = useState(true)
   const { settings } = useSettings()
-const FOOD_CATS = settings.food_categories
-const DAILY_CATS = settings.daily_categories
-  
+const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
+const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
+const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
+const FOOD_CATEGORIES = FOOD_CATS
+const DAILY_CATEGORIES = DAILY_CATS
+const isDailyCategory = (category) => DAILY_CATS.includes(category)
+
   useEffect(() => { fetchHistory() }, [])
 
   async function fetchHistory() {
