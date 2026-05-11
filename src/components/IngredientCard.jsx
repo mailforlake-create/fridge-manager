@@ -166,7 +166,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
 
   const { settings } = useSettings()
-const FOOD_CATS = settings.food_categories
+const FOOD_CATS = [...new Set((settings.food_categories || []).map(c => (c || '').trim()).filter(Boolean))]
 const FOOD_UNITS = settings.food_units
 const FOOD_LOCS = settings.food_locations
 
