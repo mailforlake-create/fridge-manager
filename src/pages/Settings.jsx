@@ -51,7 +51,7 @@ function ListEditor({ items, onChange, color }) {
 
   function add() {
     const val = newItem.trim()
-    if (!val || items.includes(val)) return
+    if (!val || val === '分类' || val === '选择分类' || items.includes(val)) return
     onChange([...items, val])
     setNewItem('')
   }
