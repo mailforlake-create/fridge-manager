@@ -338,8 +338,7 @@ async function saveEdit() {
         <select style={field} value={form.category}
           onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
-          <option value="">选择分类</option>
-            {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
+          {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
         </select>
         <input style={field} type="date" value={form.expiry_date}
           onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
