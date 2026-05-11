@@ -1,5 +1,5 @@
 // scripts/restore.js
-// 用法：node scripts/restore.js backups/2026-05-01T12-00-00
+// 用法：node scripts/restore.js dataBackup/2026-05-01T12-00-00
 // 注意：恢复会清空现有数据，谨慎使用
 
 import { createClient } from '@supabase/supabase-js'

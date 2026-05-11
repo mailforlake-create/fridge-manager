@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "backup": "node scripts/backup.js",
-    "restore": "node scripts/restore.js"
+    "restore": "node scripts/restore.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

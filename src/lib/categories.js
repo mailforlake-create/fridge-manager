@@ -6,7 +6,7 @@ export const DAILY_CATEGORIES = [
   '清洁用品','洗护用品','厨房用品','纸品','文具','服饰','日用杂货','外敷药品','其他','杂物'
 ]
 
-export const ALL_CATEGORIES = [...FOOD_CATEGORIES, ...DAILY_CATEGORIES]
+export const ALL_CATEGORIES = [...new Set([...FOOD_CATEGORIES, ...DAILY_CATEGORIES])]
 
 export const UNITS = ['个','包','棵','袋','盒','瓶','罐','根','条','块']
 
