@@ -1,16 +1,38 @@
-# React + Vite
+# Fridge Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Fridge Manager 是一个基于 React + Vite 的家庭库存管理应用，用于记录冰箱食材、日用品、购物历史和就餐历史。
 
-Currently, two official plugins are available:
+## 功能概览
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 冰箱库存管理（食材数量、到期日、位置）
+- 日用品库存管理
+- 购物历史记录与回填库存
+- 就餐历史与票据/菜品图片管理
+- Supabase 数据存储与 Edge Function 代理
 
-## React Compiler
+## 本地开发
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+```
 
-## Expanding the ESLint configuration
+## 常用脚本
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `npm run dev`：启动开发服务器
+- `npm run build`：构建生产包
+- `npm run lint`：运行 ESLint
+- `npm run backup`：导出 Supabase 数据
+- `npm run restore`：从备份恢复数据
+
+## 备份与恢复
+
+- 备份文件默认输出到 `dataBackup/` 目录。
+- 恢复前请确认目标环境，恢复脚本会清空相关表数据。
+
+## 技术栈
+
+- React 19
+- Vite 8
+- Supabase
+- React Router

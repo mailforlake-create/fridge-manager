@@ -662,13 +662,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     setConfirm({
       title: `删除「${h.store_name || '未知商家'}」的购物记录`,
       message: '同步更新物品库存？',
-      onYes: async () => {
-        await supabase.from('purchase_items').delete().eq('id', item.id)
-        await supabase.from('ingredients').delete().eq('purchase_item_id', item.id)
-        await supabase.from('daily_items').delete().eq('purchase_item_id', item.id)
-        // ...更新 state
-        setConfirm(null)
-      },
+      onYes: () => deleteHistory(h, true),
       onNo: () => deleteHistory(h, false),
       onCancel: () => setConfirm(null)
     })

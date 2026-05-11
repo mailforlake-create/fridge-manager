@@ -166,7 +166,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
 
   const { settings } = useSettings()
-const FOOD_CATS = settings.food_categories
+const FOOD_CATS = [...new Set((settings.food_categories || []).map(c => (c || '').trim()).filter(Boolean))]
 const FOOD_UNITS = settings.food_units
 const FOOD_LOCS = settings.food_locations
 
@@ -338,8 +338,7 @@ async function saveEdit() {
         <select style={field} value={form.category}
           onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
           <option value="">选择分类</option>
-          <option value="">选择分类</option>
-            {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
+          {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
         </select>
         <input style={field} type="date" value={form.expiry_date}
           onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />

@@ -13,6 +13,25 @@ const defaults = {
   daily_locations: DAILY_LOCATIONS,
 }
 
+const INVALID_LIST_VALUES = new Set(['分类', '选择分类'])
+
+function normalizeList(list) {
+  return [...new Set((list || [])
+    .map(item => (typeof item === 'string' ? item.trim() : item))
+    .filter(item => item && !INVALID_LIST_VALUES.has(item))
+  )]
+}
+
+function normalizeSettings(raw) {
+  return {
+    ...raw,
+    food_categories: normalizeList(raw.food_categories || defaults.food_categories),
+    daily_categories: normalizeList(raw.daily_categories || defaults.daily_categories),
+    food_units: normalizeList(raw.food_units || defaults.food_units),
+    daily_units: normalizeList(raw.daily_units || defaults.daily_units),
+  }
+}
+
 const SettingsContext = createContext(defaults)
 
 export function SettingsProvider({ children }) {
@@ -26,14 +45,14 @@ export function SettingsProvider({ children }) {
     if (data?.length) {
       const map = {}
       data.forEach(row => { map[row.key] = row.value })
-      setSettings(prev => ({ ...prev, ...map }))
+      setSettings(prev => normalizeSettings({ ...prev, ...map }))
     }
     setLoading(false)
   }
 
   async function saveSetting(key, value) {
     await supabase.from('settings').upsert({ key, value, updated_at: new Date().toISOString() })
-    setSettings(prev => ({ ...prev, [key]: value }))
+    setSettings(prev => normalizeSettings({ ...prev, [key]: value }))
   }
 
   return (
