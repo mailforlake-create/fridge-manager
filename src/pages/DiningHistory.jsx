@@ -323,6 +323,14 @@ function EditDiningModal({ record, onClose, onSaved }) {
       }
 
       if (record.dining_type === 'home') {
+        const originalItemIds = new Set((record.dining_items || []).map(i => i.id).filter(Boolean))
+        const currentItemIds = new Set(items.map(i => i.id).filter(Boolean))
+        const removedItemIds = [...originalItemIds].filter(id => !currentItemIds.has(id))
+
+        if (removedItemIds.length > 0) {
+          await supabase.from('dining_items').delete().in('id', removedItemIds)
+        }
+
         for (const item of items) {
           if (item.id) {
             await supabase.from('dining_items').update({
@@ -352,11 +360,16 @@ function EditDiningModal({ record, onClose, onSaved }) {
         }).filter(Boolean)
         if (newItems.length > 0) await supabase.from('dining_items').insert(newItems)
 
-        const allItems =[...items, ...Object.entries(addSelected).map(([id, s]) => {
+        const existingCost = items.reduce((sum, item) => {
+          if (!item.ingredient_id) return sum
+          const ing = ingredients.find(i => i.id === item.ingredient_id)
+          return sum + calcCost(ing, Number(item.qty_edit))
+        }, 0)
+        const addedCost = Object.entries(addSelected).reduce((sum, [id, s]) => {
           const ing = ingredients.find(i => i.id === id)
-          return { price_contribution: ing ? calcCost(ing, s.qty) : 0 }
-        })]
-        const newCost = allItems.reduce((s, i) => s + (i.price_contribution || 0), 0)
+          return sum + (ing ? calcCost(ing, s.qty) : 0)
+        }, 0)
+        const newCost = existingCost + addedCost
         await supabase.from('dining_history').update({ home_cost: Math.round(newCost * 10) / 10 }).eq('id', record.id)
       }
     } catch (e) {
