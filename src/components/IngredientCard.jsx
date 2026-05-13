@@ -166,6 +166,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
 
   const { settings } = useSettings()
+  const itemConsumeStep = Math.min(10, Math.max(0.01, Number(settings.item_consume_step) || 0.1))
 const FOOD_CATS = [...new Set((settings.food_categories || []).map(c => (c || '').trim()).filter(Boolean))]
 const FOOD_UNITS = settings.food_units
 const FOOD_LOCS = settings.food_locations
@@ -474,7 +475,7 @@ async function saveEdit() {
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(1); setEditingQty(false) }}
+        <button onClick={() => { setConsuming(!consuming); setConsumeQty(itemConsumeStep); setEditingQty(false) }}
           style={{
             padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
             background: consuming ? '#f1f5f9' : '#fef3c7',
@@ -491,7 +492,7 @@ async function saveEdit() {
           background: '#fafafa', border: '1px solid #f1f5f9'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-            <button onClick={() => { setConsumeQty(q => Math.max(0.1, parseFloat((Number(q) - 0.1).toFixed(1)))); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.max(itemConsumeStep, parseFloat((Number(q) - itemConsumeStep).toFixed(2)))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -501,9 +502,9 @@ async function saveEdit() {
             {editingQty ? (
               <input
                 type="number"
-                step="0.1"
+                step={itemConsumeStep}
                 value={consumeQty}
-                onChange={e => setConsumeQty(Math.min(remaining, Math.max(0.1, Number(e.target.value))))}
+                onChange={e => setConsumeQty(Math.min(remaining, Math.max(itemConsumeStep, Number(e.target.value))))}
                 onBlur={() => setEditingQty(false)}
                 autoFocus
                 style={{
@@ -522,7 +523,7 @@ async function saveEdit() {
               </div>
             )}
 
-            <button onClick={() => { setConsumeQty(q => Math.min(remaining, parseFloat((Number(q) + 0.1).toFixed(1)))); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.min(remaining, parseFloat((Number(q) + itemConsumeStep).toFixed(2)))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
