@@ -533,7 +533,8 @@ async function saveEdit() {
               }}>+</button>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
             {QUICK_STEPS.map(step => (
               <button key={step} onClick={() => setActiveConsumeStep(step)}
                 style={{
@@ -544,7 +545,7 @@ async function saveEdit() {
                   background: activeConsumeStep === step ? '#dcfce7' : '#fff',
                   color: activeConsumeStep === step ? '#166534' : '#475569'
                 }}>
-                步长 {step}
+                {step}
               </button>
             ))}
           </div>

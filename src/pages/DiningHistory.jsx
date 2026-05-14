@@ -653,7 +653,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#64748b' }}>调整步长</span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
           {QUICK_STEPS.map(step => (
             <button key={step} onClick={() => setActiveQtyStep(step)}
               style={{
