@@ -13,6 +13,8 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
   const [ingPage, setIngPage] = useState(0)
   const { settings } = useSettings()
   const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
+  const QUICK_STEPS = [0.01, 0.1, 1, 5, 10]
+  const [activeQtyStep, setActiveQtyStep] = useState(diningQtyStep)
   const PAGE_SIZE = 8
 
   const smallField = {
@@ -85,6 +87,22 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
           </select>
         </div>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
+        {QUICK_STEPS.map(step => (
+          <button key={step} onClick={() => setActiveQtyStep(step)}
+            style={{
+              padding: '3px 8px',
+              borderRadius: 999,
+              fontSize: 12,
+              border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
+              background: activeQtyStep === step ? '#dcfce7' : '#fff',
+              color: activeQtyStep === step ? '#166534' : '#475569'
+            }}>
+            {step}
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>加载中...</div>
@@ -112,7 +130,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                     <div onClick={() => {
                       setSelected(s => {
                         if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
-                        return { ...s,[ing.id]: { qty: remaining > 0 ? diningQtyStep : diningQtyStep, updateConsumed: false } }
+                        return { ...s,[ing.id]: { qty: remaining > 0 ? activeQtyStep : activeQtyStep, updateConsumed: false } }
                       })
                     }} style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -138,13 +156,13 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                       {isSelected && (
                         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(diningQtyStep, parseFloat(((s[ing.id]?.qty || 1) - diningQtyStep).toFixed(2))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(activeQtyStep, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2))) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" step={diningQtyStep} value={sel?.qty || 1}
+                            <input type="number" step={activeQtyStep} value={sel?.qty || 1}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
                               style={{ width: 55, textAlign: 'center', padding: '3px 6px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none' }} />
                             <span style={{ fontSize: 12, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + diningQtyStep).toFixed(2)) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2)) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                             {cost > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
                           </div>
@@ -252,6 +270,10 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
 }
 
 function EditDiningModal({ record, onClose, onSaved }) {
+  const { settings } = useSettings()
+  const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
+  const QUICK_STEPS = [0.01, 0.1, 1, 5, 10]
+  const [activeQtyStep, setActiveQtyStep] = useState(diningQtyStep)
   const [header, setHeader] = useState({
     meal_time: record.meal_time || null,
     dined_at: record.dined_at,
@@ -466,6 +488,22 @@ function EditDiningModal({ record, onClose, onSaved }) {
           {record.dining_type === 'home' && (
             <div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>已选食材</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
+                {QUICK_STEPS.map(step => (
+                  <button key={step} onClick={() => setActiveQtyStep(step)}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
+                      background: activeQtyStep === step ? '#dcfce7' : '#fff',
+                      color: activeQtyStep === step ? '#166534' : '#475569'
+                    }}>
+                    {step}
+                  </button>
+                ))}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {items.map((item, i) => (
                   <div key={i} style={{ background: '#f0fdf4', borderRadius: 9, padding: '8px 11px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -476,10 +514,10 @@ function EditDiningModal({ record, onClose, onSaved }) {
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(diningQtyStep,parseFloat(((n[i].qty_edit||1)-diningQtyStep).toFixed(2)))}; return n })}
+                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(activeQtyStep,parseFloat(((n[i].qty_edit||1)-activeQtyStep).toFixed(2)))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                       <span style={{ fontSize: 13, fontWeight: 600, minWidth: 36, textAlign: 'center' }}>{item.qty_edit}{item.unit}</span>
-                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+diningQtyStep).toFixed(2))}; return n })}
+                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+activeQtyStep).toFixed(2))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
                     <button onClick={() => setItems(currentItems => currentItems.filter((_, j) => j !== i))}
@@ -650,6 +688,22 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
             {totalCost > 0 && <span style={{ marginLeft: 8, fontWeight: 600, color: '#16a34a' }}>预计成本 ¥{totalCost.toFixed(1)}</span>}
           </div>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
+          {QUICK_STEPS.map(step => (
+            <button key={step} onClick={() => setActiveQtyStep(step)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 999,
+                fontSize: 12,
+                border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
+                background: activeQtyStep === step ? '#dcfce7' : '#fff',
+                color: activeQtyStep === step ? '#166534' : '#475569'
+              }}>
+              {step}
+            </button>
+          ))}
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {filtered.map(ing => {
@@ -684,13 +738,13 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#475569', width: 60 }}>使用量</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(diningQtyStep, parseFloat(((s[ing.id]?.qty || 1) - diningQtyStep).toFixed(2))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(activeQtyStep, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2))) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" value={sel?.qty || 1} step={diningQtyStep}
+                            <input type="number" value={sel?.qty || 1} step={activeQtyStep}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
                               style={{ width: 60, textAlign: 'center', ...smallField }} />
                             <span style={{ fontSize: 13, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, parseFloat(((s[ing.id]?.qty || 1) + diningQtyStep).toFixed(2))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2))) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                           </div>
                           {cost > 0 && <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
