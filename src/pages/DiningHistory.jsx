@@ -254,6 +254,8 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
 }
 
 function EditDiningModal({ record, onClose, onSaved }) {
+  const { settings } = useSettings()
+  const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
   const [header, setHeader] = useState({
     meal_time: record.meal_time || null,
     dined_at: record.dined_at,
