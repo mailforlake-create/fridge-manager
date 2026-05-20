@@ -494,7 +494,7 @@ async function saveEdit() {
           background: '#fafafa', border: '1px solid #f1f5f9'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-            <button onClick={() => { setConsumeQty(q => Math.max(activeConsumeStep, parseFloat((Number(q) - activeConsumeStep).toFixed(2)))); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.min(remaining, Math.max(0, parseFloat((Number(q) - activeConsumeStep).toFixed(2))))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
