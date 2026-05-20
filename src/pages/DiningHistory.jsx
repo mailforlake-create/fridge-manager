@@ -132,7 +132,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                     <div onClick={() => {
                       setSelected(s => {
                         if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
-                        return { ...s,[ing.id]: { qty: remaining > 0 ? activeQtyStep : activeQtyStep, updateConsumed: false } }
+                        return { ...s,[ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false } }
                       })
                     }} style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -607,7 +607,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
         return next
       }
       const remaining = (ing.quantity || 1) - (ing.consumed_quantity || 0)
-      return { ...s, [ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false, existingItemId: null } }
+      return { ...s, [ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false, existingItemId: null } }
     })
   }
 
