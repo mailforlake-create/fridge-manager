@@ -158,7 +158,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                       {isSelected && (
                         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0.01, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                             <input type="number" step={activeQtyStep} max={remaining} value={sel?.qty || 1}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, Number(e.target.value) || 0)) } }))}
@@ -744,7 +744,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#475569', width: 60 }}>使用量</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0.01, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                             <input type="number" value={sel?.qty || 1} step={activeQtyStep} max={remaining}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, Number(e.target.value) || 0)) } }))}
