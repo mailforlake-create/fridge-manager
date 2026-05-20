@@ -477,7 +477,7 @@ async function saveEdit() {
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(activeConsumeStep); setEditingQty(false) }}
+        <button onClick={() => { setConsuming(!consuming); setConsumeQty(Math.min(remaining, activeConsumeStep)); setEditingQty(false) }}
           style={{
             padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
             background: consuming ? '#f1f5f9' : '#fef3c7',
