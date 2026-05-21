@@ -90,7 +90,16 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
         {QUICK_STEPS.map(step => (
-          <button key={step} onClick={() => setActiveQtyStep(step)} disabled={filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
+          <button key={step} onClick={() => {
+            setActiveQtyStep(step)
+            setSelected(s => Object.fromEntries(
+              Object.entries(s).map(([id, val]) => {
+                const ing = filteredIng.find(i => String(i.id) === String(id))
+                const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : (val?.qty || step)
+                return [id, { ...val, qty: Math.min(remaining, step) }]
+              })
+            ))
+          }} disabled={filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
             style={{
               padding: '3px 8px',
               borderRadius: 999,
@@ -493,7 +502,13 @@ function EditDiningModal({ record, onClose, onSaved }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
                 {QUICK_STEPS.map(step => (
-                  <button key={step} onClick={() => setActiveQtyStep(step)} disabled={items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step)}
+                  <button key={step} onClick={() => {
+                    setActiveQtyStep(step)
+                    setItems(currentItems => currentItems.map(item => {
+                      const maxQty = Number(item.quantity) || Number(item.qty_edit) || 0
+                      return { ...item, qty_edit: Math.min(maxQty, step) }
+                    }))
+                  }} disabled={items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step)}
                     style={{
                       padding: '3px 8px',
                       borderRadius: 999,
@@ -695,7 +710,16 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
           {QUICK_STEPS.map(step => (
-            <button key={step} onClick={() => setActiveQtyStep(step)} disabled={filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
+            <button key={step} onClick={() => {
+              setActiveQtyStep(step)
+              setSelected(s => Object.fromEntries(
+                Object.entries(s).map(([id, val]) => {
+                  const ing = filtered.find(i => String(i.id) === String(id))
+                  const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : (val?.qty || step)
+                  return [id, { ...val, qty: Math.min(remaining, step) }]
+                })
+              ))
+            }} disabled={filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
               style={{
                 padding: '4px 8px',
                 borderRadius: 999,
