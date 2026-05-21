@@ -477,7 +477,7 @@ async function saveEdit() {
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(activeConsumeStep); setEditingQty(false) }}
+        <button onClick={() => { setConsuming(!consuming); setConsumeQty(Math.min(remaining, activeConsumeStep)); setEditingQty(false) }}
           style={{
             padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
             background: consuming ? '#f1f5f9' : '#fef3c7',
@@ -494,7 +494,7 @@ async function saveEdit() {
           background: '#fafafa', border: '1px solid #f1f5f9'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-            <button onClick={() => { setConsumeQty(q => Math.max(activeConsumeStep, parseFloat((Number(q) - activeConsumeStep).toFixed(2)))); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.min(remaining, Math.max(0.01, parseFloat((Number(q) - activeConsumeStep).toFixed(2))))); setEditingQty(false) }}
               style={{
                 width: 36, height: 36, borderRadius: 10, background: '#f1f5f9',
                 color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -506,7 +506,8 @@ async function saveEdit() {
                 type="number"
                 step={activeConsumeStep}
                 value={consumeQty}
-                onChange={e => setConsumeQty(Math.min(remaining, Math.max(activeConsumeStep, Number(e.target.value))))}
+                max={remaining}
+                onChange={e => setConsumeQty(Math.min(remaining, Math.max(0, Number(e.target.value))))}
                 onBlur={() => setEditingQty(false)}
                 autoFocus
                 style={{
@@ -536,14 +537,16 @@ async function saveEdit() {
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
             {QUICK_STEPS.map(step => (
-              <button key={step} onClick={() => setActiveConsumeStep(step)}
+              <button key={step} onClick={() => { setActiveConsumeStep(step); setConsumeQty(Math.min(remaining, step)) }} disabled={step > remaining}
                 style={{
                   padding: '4px 8px',
                   borderRadius: 999,
                   fontSize: 12,
                   border: `1px solid ${activeConsumeStep === step ? '#16a34a' : '#cbd5e1'}`,
-                  background: activeConsumeStep === step ? '#dcfce7' : '#fff',
-                  color: activeConsumeStep === step ? '#166534' : '#475569'
+                  background: step > remaining ? '#f1f5f9' : (activeConsumeStep === step ? '#dcfce7' : '#fff'),
+                  color: step > remaining ? '#94a3b8' : (activeConsumeStep === step ? '#166534' : '#475569'),
+                  cursor: step > remaining ? 'not-allowed' : 'pointer',
+                  opacity: step > remaining ? 0.7 : 1
                 }}>
                 {step}
               </button>
