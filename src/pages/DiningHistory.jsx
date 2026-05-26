@@ -593,6 +593,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
 function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onClose, onSaved }) {
   const [ingredients, setIngredients] = useState([])
   const[selected, setSelected] = useState({})
+  const [activeIngredientId, setActiveIngredientId] = useState(null)
   const [showConsumed, setShowConsumed] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -627,8 +628,10 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
       if (s[ing.id]) {
         const next = { ...s }
         delete next[ing.id]
+        if (String(activeIngredientId) === String(ing.id)) setActiveIngredientId(null)
         return next
       }
+      setActiveIngredientId(ing.id)
       const remaining = (ing.quantity || 1) - (ing.consumed_quantity || 0)
       return { ...s, [ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false, existingItemId: null } }
     })
@@ -720,13 +723,16 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
           {QUICK_STEPS.map(step => (
             <button key={step} onClick={() => {
               setActiveQtyStep(step)
-              setSelected(s => Object.fromEntries(
-                Object.entries(s).map(([id, val]) => {
-                  const ing = filtered.find(i => String(i.id) === String(id))
-                  const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : (val?.qty || step)
-                  return [id, { ...val, qty: Math.min(remaining, step) }]
-                })
-              ))
+              if (!activeIngredientId) return
+              setSelected(s => {
+                if (!s[activeIngredientId]) return s
+                const ing = filtered.find(i => String(i.id) === String(activeIngredientId))
+                const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
+                return {
+                  ...s,
+                  [activeIngredientId]: { ...s[activeIngredientId], qty: Math.min(remaining, step) }
+                }
+              })
             }} disabled={filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
               style={{
                 padding: '4px 8px',
@@ -772,7 +778,10 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                       {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}/${ing.quantity}${ing.unit}`}
                     </div>
                     {isSelected && (
-                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div onClick={() => setActiveIngredientId(ing.id)} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 11, color: String(activeIngredientId) === String(ing.id) ? '#16a34a' : '#94a3b8' }}>
+                          {String(activeIngredientId) === String(ing.id) ? '当前步长应用对象' : '点击此区域设为步长应用对象'}
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#475569', width: 60 }}>使用量</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
