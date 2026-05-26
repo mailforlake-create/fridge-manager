@@ -5,6 +5,7 @@ import PhotoViewer from '../components/PhotoViewer'
 import { useSettings } from '../context/SettingsContext'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
+  const [activeIngredientId, setActiveIngredientId] = useState(null)
   const [ingSearch, setIngSearch] = useState('')
   const [ingFilterStatus, setIngFilterStatus] = useState('active')
   const[ingFilterCategory, setIngFilterCategory] = useState('')
@@ -92,13 +93,16 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
         {QUICK_STEPS.map(step => (
           <button key={step} onClick={() => {
             setActiveQtyStep(step)
-            setSelected(s => Object.fromEntries(
-              Object.entries(s).map(([id, val]) => {
-                const ing = filteredIng.find(i => String(i.id) === String(id))
-                const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : (val?.qty || step)
-                return [id, { ...val, qty: Math.min(remaining, step) }]
-              })
-            ))
+            if (!activeIngredientId) return
+            setSelected(s => {
+              if (!s[activeIngredientId]) return s
+              const ing = ingredients.find(i => String(i.id) === String(activeIngredientId))
+              const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
+              return {
+                ...s,
+                [activeIngredientId]: { ...s[activeIngredientId], qty: Math.min(remaining, step) }
+              }
+            })
           }} disabled={filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
             style={{
               padding: '3px 8px',
@@ -140,7 +144,8 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <div onClick={() => {
                       setSelected(s => {
-                        if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
+                        if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; if (String(activeIngredientId) === String(ing.id)) setActiveIngredientId(null); return n }
+                        setActiveIngredientId(ing.id)
                         return { ...s,[ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false } }
                       })
                     }} style={{
@@ -165,7 +170,10 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                         </div>
                       )}
                       {isSelected && (
-                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <div onClick={() => setActiveIngredientId(ing.id)} style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ fontSize: 11, color: String(activeIngredientId) === String(ing.id) ? '#16a34a' : '#94a3b8' }}>
+                            {String(activeIngredientId) === String(ing.id) ? '当前步长应用对象' : '点击此区域设为步长应用对象'}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0.01, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
