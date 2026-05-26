@@ -305,6 +305,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
   const [items, setItems] = useState(
     (record.dining_items ||[]).map(i => ({ ...i, price: i.price || '', qty_edit: i.consumed_quantity || i.quantity || 1 }))
   )
+  const [stepCheckedItems, setStepCheckedItems] = useState({})
   const[saving, setSaving] = useState(false)
   const[showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
@@ -313,6 +314,16 @@ function EditDiningModal({ record, onClose, onSaved }) {
   useEffect(() => {
     if (record.dining_type === 'home') fetchIngredients()
   },[record.dining_type, record.dined_at])
+
+  useEffect(() => {
+    setStepCheckedItems(prev => {
+      const next = {}
+      items.forEach((_, index) => {
+        next[index] = Object.prototype.hasOwnProperty.call(prev, index) ? prev[index] : true
+      })
+      return next
+    })
+  }, [items.length])
 
   async function fetchIngredients() {
     const { data } = await supabase
@@ -512,7 +523,8 @@ function EditDiningModal({ record, onClose, onSaved }) {
                 {QUICK_STEPS.map(step => (
                   <button key={step} onClick={() => {
                     setActiveQtyStep(step)
-                    setItems(currentItems => currentItems.map(item => {
+                    setItems(currentItems => currentItems.map((item, index) => {
+                      if (!stepCheckedItems[index]) return item
                       const maxQty = Number(item.quantity) || Number(item.qty_edit) || 0
                       return { ...item, qty_edit: Math.min(maxQty, step) }
                     }))
@@ -534,6 +546,13 @@ function EditDiningModal({ record, onClose, onSaved }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {items.map((item, i) => (
                   <div key={i} style={{ background: '#f0fdf4', borderRadius: 9, padding: '8px 11px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={stepCheckedItems[i] ?? true}
+                      onChange={e => setStepCheckedItems(s => ({ ...s, [i]: e.target.checked }))}
+                      style={{ width: 15, height: 15, accentColor: '#16a34a', cursor: 'pointer' }}
+                      title="勾选后快捷步长会影响该食材"
+                    />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{item.name_zh}</div>
                       {item.price_contribution > 0 && (
