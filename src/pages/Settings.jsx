@@ -44,6 +44,20 @@ const SECTION_CONFIG = [
     type: 'location',
     color: '#3b82f6'
   },
+  {
+    key: 'item_consume_step',
+    label: '物品消耗数量步长',
+    icon: '➗',
+    type: 'number',
+    color: '#16a34a'
+  },
+  {
+    key: 'dining_qty_step',
+    label: '履历数量调整步长',
+    icon: '🍽️',
+    type: 'number',
+    color: '#f97316'
+  },
 ]
 
 function ListEditor({ items, onChange, color }) {
@@ -97,6 +111,28 @@ function ListEditor({ items, onChange, color }) {
           background: color, color: '#fff'
         }}>添加</button>
       </div>
+    </div>
+  )
+}
+
+
+function NumberSettingEditor({ value, onChange, color, min = 0.01, max = 10 }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step="0.01"
+        value={value ?? ''}
+        onChange={e => onChange(Math.min(max, Math.max(min, Number(e.target.value) || min)))}
+        style={{
+          width: 140, padding: '7px 10px', borderRadius: 8, fontSize: 13,
+          border: '1.5px solid #e2e8f0', outline: 'none'
+        }}
+      />
+      <span style={{ fontSize: 12, color: '#94a3b8' }}>范围 {min} ~ {max}</span>
+      <button onClick={() => onChange(min)} style={{ padding: '7px 10px', borderRadius: 8, background: color, color: '#fff', fontSize: 12 }}>重置最小值</button>
     </div>
   )
 }
@@ -211,6 +247,12 @@ export default function Settings() {
               {section.type === 'list' ? (
                 <ListEditor
                   items={localSettings[section.key] || []}
+                  onChange={val => update(section.key, val)}
+                  color={section.color}
+                />
+              ) : section.type === 'number' ? (
+                <NumberSettingEditor
+                  value={localSettings[section.key]}
                   onChange={val => update(section.key, val)}
                   color={section.color}
                 />

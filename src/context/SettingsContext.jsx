@@ -11,6 +11,8 @@ const defaults = {
   daily_units: DAILY_UNITS,
   food_locations: LOCATIONS,
   daily_locations: DAILY_LOCATIONS,
+  item_consume_step: 0.1,
+  dining_qty_step: 1,
 }
 
 const INVALID_LIST_VALUES = new Set(['分类', '选择分类'])
@@ -29,6 +31,8 @@ function normalizeSettings(raw) {
     daily_categories: normalizeList(raw.daily_categories || defaults.daily_categories),
     food_units: normalizeList(raw.food_units || defaults.food_units),
     daily_units: normalizeList(raw.daily_units || defaults.daily_units),
+    item_consume_step: Math.min(10, Math.max(0.01, Number(raw.item_consume_step) || defaults.item_consume_step)),
+    dining_qty_step: Math.min(10, Math.max(0.01, Number(raw.dining_qty_step) || defaults.dining_qty_step)),
   }
 }
 

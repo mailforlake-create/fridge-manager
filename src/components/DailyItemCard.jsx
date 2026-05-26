@@ -8,6 +8,7 @@ export default function DailyItemCard({ item, onDelete, onUpdate }) {
 const DAILY_CATS = settings.daily_categories
 const DAILY_UNITS = settings.daily_units
 const DAILY_LOCS = settings.daily_locations
+  const itemConsumeStep = Math.min(10, Math.max(0.01, Number(settings.item_consume_step) || 0.1))
   const [syncPurchase, setSyncPurchase] = useState(true)
   const [editing, setEditing] = useState(false)
   const [consuming, setConsuming] = useState(false)
@@ -35,7 +36,7 @@ const DAILY_LOCS = settings.daily_locations
     await supabase.from('daily_items').update({ consumed_quantity: newConsumed }).eq('id', item.id)
     onUpdate({ ...item, consumed_quantity: newConsumed })
     setConsuming(false)
-    setConsumeQty(1)
+    setConsumeQty(itemConsumeStep)
     setEditingQty(false)
   }
 
@@ -188,7 +189,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(1); setEditingQty(false) }}
+        <button onClick={() => { setConsuming(!consuming); setConsumeQty(itemConsumeStep); setEditingQty(false) }}
           style={{
             padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
             background: consuming ? '#f1f5f9' : '#dbeafe',
@@ -204,11 +205,11 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
           background: '#fafafa', border: '1px solid #f1f5f9'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
-            <button onClick={() => { setConsumeQty(q => Math.max(1, Number(q) - 1)); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.max(itemConsumeStep, parseFloat((Number(q) - itemConsumeStep).toFixed(2)))); setEditingQty(false) }}
               style={{ width: 36, height: 36, borderRadius: 10, background: '#f1f5f9', color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>−</button>
             {editingQty ? (
-              <input type="number" value={consumeQty}
-                onChange={e => setConsumeQty(Math.min(remaining, Math.max(1, Number(e.target.value))))}
+              <input type="number" step={itemConsumeStep} value={consumeQty}
+                onChange={e => setConsumeQty(Math.min(remaining, Math.max(itemConsumeStep, Number(e.target.value))))}
                 onBlur={() => setEditingQty(false)} autoFocus
                 style={{ width: 70, textAlign: 'center', fontSize: 18, fontWeight: 700, padding: '4px 8px', borderRadius: 8, border: '1.5px solid #3b82f6', outline: 'none' }} />
             ) : (
@@ -218,7 +219,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
                 border: '1.5px solid #e2e8f0', background: '#fff'
               }}>{consumeQty}</div>
             )}
-            <button onClick={() => { setConsumeQty(q => Math.min(remaining, Number(q) + 1)); setEditingQty(false) }}
+            <button onClick={() => { setConsumeQty(q => Math.min(remaining, parseFloat((Number(q) + itemConsumeStep).toFixed(2)))); setEditingQty(false) }}
               style={{ width: 36, height: 36, borderRadius: 10, background: '#f1f5f9', color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>+</button>
           </div>
           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginBottom: 10 }}>

@@ -11,6 +11,8 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
   const [ingFilterStore, setIngFilterStore] = useState('')
   const[ingFilterDate, setIngFilterDate] = useState('')
   const [ingPage, setIngPage] = useState(0)
+  const { settings } = useSettings()
+  const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
   const PAGE_SIZE = 8
 
   const smallField = {
@@ -110,7 +112,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                     <div onClick={() => {
                       setSelected(s => {
                         if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; return n }
-                        return { ...s,[ing.id]: { qty: remaining > 0 ? 1 : 1, updateConsumed: false } }
+                        return { ...s,[ing.id]: { qty: remaining > 0 ? diningQtyStep : diningQtyStep, updateConsumed: false } }
                       })
                     }} style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -136,13 +138,13 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                       {isSelected && (
                         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(0.1, parseFloat(((s[ing.id]?.qty || 1) - 1).toFixed(1))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(diningQtyStep, parseFloat(((s[ing.id]?.qty || 1) - diningQtyStep).toFixed(2))) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" step="0.1" value={sel?.qty || 1}
+                            <input type="number" step={diningQtyStep} value={sel?.qty || 1}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
                               style={{ width: 55, textAlign: 'center', padding: '3px 6px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none' }} />
                             <span style={{ fontSize: 12, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + 1).toFixed(1)) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: parseFloat(((s[ing.id]?.qty || 1) + diningQtyStep).toFixed(2)) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                             {cost > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
                           </div>
@@ -266,6 +268,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
   const[showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
   const[addSelected, setAddSelected] = useState({})
+  const [activeAdjustIndex, setActiveAdjustIndex] = useState(null)
 
   useEffect(() => {
     if (record.dining_type === 'home') fetchIngredients()
@@ -463,10 +466,18 @@ function EditDiningModal({ record, onClose, onSaved }) {
 
           {record.dining_type === 'home' && (
             <div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>已选食材</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>已选食材（先选择一项，再用步长调整）</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {items.map((item, i) => (
-                  <div key={i} style={{ background: '#f0fdf4', borderRadius: 9, padding: '8px 11px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {items.map((item, i) => {
+                  const isActive = activeAdjustIndex === i
+                  return (
+                  <div key={i} onClick={() => setActiveAdjustIndex(i)} style={{
+                    background: isActive ? '#dcfce7' : '#f0fdf4', borderRadius: 9, padding: '8px 11px', display: 'flex', alignItems: 'center', gap: 8,
+                    border: isActive ? '1.5px solid #16a34a' : '1.5px solid transparent', cursor: 'pointer'
+                  }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${isActive ? '#16a34a' : '#cbd5e1'}`, background: isActive ? '#16a34a' : '#fff', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {isActive ? '✓' : ''}
+                    </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{item.name_zh}</div>
                       {item.price_contribution > 0 && (
@@ -474,16 +485,16 @@ function EditDiningModal({ record, onClose, onSaved }) {
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(0.1,parseFloat(((n[i].qty_edit||1)-1).toFixed(1)))}; return n })}
-                        style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 36, textAlign: 'center' }}>{item.qty_edit}{item.unit}</span>
-                      <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+1).toFixed(1))}; return n })}
-                        style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                      <button onClick={(e) => { e.stopPropagation(); if (!isActive) return; setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(diningQtyStep,parseFloat(((n[i].qty_edit||1)-diningQtyStep).toFixed(2)))}; return n }) }}
+                        style={{ width: 22, height: 22, borderRadius: 5, background: isActive ? '#f1f5f9' : '#f8fafc', color: isActive ? '#475569' : '#cbd5e1', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 52, textAlign: 'center' }}>{item.qty_edit}{item.unit}</span>
+                      <button onClick={(e) => { e.stopPropagation(); if (!isActive) return; setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:parseFloat(((n[i].qty_edit||1)+diningQtyStep).toFixed(2))}; return n }) }}
+                        style={{ width: 22, height: 22, borderRadius: 5, background: isActive ? '#f1f5f9' : '#f8fafc', color: isActive ? '#475569' : '#cbd5e1', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
-                    <button onClick={() => setItems(currentItems => currentItems.filter((_, j) => j !== i))}
+                    <button onClick={(e) => { e.stopPropagation(); setItems(currentItems => currentItems.filter((_, j) => j !== i)); setActiveAdjustIndex(idx => idx === i ? null : (idx > i ? idx - 1 : idx)) }}
                       style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
                   </div>
-                ))}
+                )})}
               </div>
 
               <button onClick={() => setShowAddMore(!showAddMore)} style={{
@@ -682,13 +693,13 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#475569', width: 60 }}>使用量</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(0.1, (s[ing.id]?.qty || 1) - 1) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.max(diningQtyStep, parseFloat(((s[ing.id]?.qty || 1) - diningQtyStep).toFixed(2))) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" value={sel?.qty || 1} step="0.1"
+                            <input type="number" value={sel?.qty || 1} step={diningQtyStep}
                               onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Number(e.target.value) } }))}
                               style={{ width: 60, textAlign: 'center', ...smallField }} />
                             <span style={{ fontSize: 13, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, (s[ing.id]?.qty || 1) + 1) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(ing.quantity || 99, parseFloat(((s[ing.id]?.qty || 1) + diningQtyStep).toFixed(2))) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                           </div>
                           {cost > 0 && <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
