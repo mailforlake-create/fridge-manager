@@ -7,8 +7,9 @@ export async function callAI(messages, aiConfig = {}) {
   const models = aiConfig.ai_models || []
   const selectedName = aiConfig.ai_selected_model || ''
   const selectedModel = models.find(m => m.name === selectedName) || models[0]
+  const normalizeUrl = (url) => (url && url.includes(':generateContent') ? url : `${url}:generateContent`)
   const configuredUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
-  const modelUrl = configuredUrl.includes(':generateContent') ? configuredUrl : `${configuredUrl}:generateContent`
+  const modelUrl = normalizeUrl(configuredUrl)
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
     method: 'POST',
@@ -47,6 +48,16 @@ export async function callAI(messages, aiConfig = {}) {
   ]
     .filter(Boolean)
     .join(', ')
+  const fallbackUrl = normalizeUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash')
+  if (modelUrl !== fallbackUrl) {
+    const retryText = await callAI(messages, {
+      ...aiConfig,
+      ai_models: [{ name: 'fallback-gemini-2.5-flash', url: fallbackUrl }],
+      ai_selected_model: 'fallback-gemini-2.5-flash'
+    })
+    if (retryText) return retryText
+  }
+
   throw new Error(`AI返回为空（模型有响应但未解析出文本），请重试或切换模型。当前模型URL：${modelUrl}${details ? `；${details}` : ''}`)
 }
 
