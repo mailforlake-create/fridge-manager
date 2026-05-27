@@ -1,0 +1,16 @@
+{
+  "name": "冰箱管家",
+  "short_name": "冰箱管家",
+  "description": "智能冰箱食材管理",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
