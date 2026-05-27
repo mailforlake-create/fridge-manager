@@ -22,8 +22,18 @@ export async function callAI(messages, aiConfig = {}) {
     })
   })
   const data = await res.json()
+  if (!res.ok) throw new Error(data?.error || `AI请求失败（HTTP ${res.status}）`)
   if (data.error) throw new Error(data.error)
-  return data.content[0].text
+
+  const text = data?.content?.[0]?.text || ''
+  if (text) return text
+
+  const finishReason = data?.raw?.candidates?.[0]?.finishReason
+  const blockReason = data?.raw?.promptFeedback?.blockReason
+  const details = [finishReason ? `finishReason=${finishReason}` : '', blockReason ? `blockReason=${blockReason}` : '']
+    .filter(Boolean)
+    .join(', ')
+  throw new Error(`AI返回为空${details ? `（${details}）` : ''}`)
 }
 
 export function fileToBase64(file) {
@@ -127,7 +137,13 @@ export async function recognizeReceipt(file, categories = {}) {
 
   if (!step1?.items?.length) {
     const preview = (step1Text || '').slice(0, 280).replace(/\s+/g, ' ')
-    throw new Error(`小票识别未提取到商品明细。模型原始返回片段：${preview || '空返回'}`)
+    const meta = {
+      has_store_name: Boolean(step1?.store_name),
+      has_date: Boolean(step1?.purchased_at),
+      has_total: step1?.total_amount !== null && step1?.total_amount !== undefined,
+      items_count: step1?.items?.length || 0
+    }
+    throw new Error(`小票识别未提取到商品明细。解析结果：${JSON.stringify(meta)}。模型返回片段：${preview || '空返回'}`)
   }
 
   const names = step1.items.map(i => i.name_original).join('\n')

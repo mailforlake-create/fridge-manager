@@ -37,7 +37,13 @@ Deno.serve(async (req) => {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
     return new Response(
-      JSON.stringify({ content: [{ type: 'text', text }] }),
+      JSON.stringify({
+        content: [{ type: 'text', text }],
+        raw: {
+          promptFeedback: data?.promptFeedback || null,
+          candidates: (data?.candidates || []).map((c: any) => ({ finishReason: c?.finishReason || null }))
+        }
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (e) {
