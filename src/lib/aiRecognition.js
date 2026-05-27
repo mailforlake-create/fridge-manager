@@ -26,8 +26,16 @@ export async function callAI(messages, aiConfig = {}) {
       messages
     })
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data?.error || `AI请求失败（HTTP ${res.status}）`)
+  const rawBody = await res.text()
+  let data = {}
+  try { data = rawBody ? JSON.parse(rawBody) : {} } catch { data = { message: rawBody } }
+  if (!res.ok) {
+    const serverMsg = data?.error || data?.message || ''
+    if (res.status === 403) {
+      throw new Error(`AI请求被拒绝（HTTP 403）。可能是 Supabase Edge Function 开启了 JWT 校验（verify_jwt=true）但当前使用的是 publishable key，或函数权限未开放。服务端信息：${serverMsg || 'Method forbidden'}`)
+    }
+    throw new Error(data?.error || `AI请求失败（HTTP ${res.status}）`)
+  }
   if (data.error) throw new Error(data.error)
 
   const text = data?.content?.[0]?.text || ''
