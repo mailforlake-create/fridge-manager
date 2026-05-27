@@ -70,6 +70,7 @@ quantity(数字), unit(${foodUnits}), expiry_date(YYYY-MM-DD或空字符串)
 }
 
 export async function recognizeReceipt(file, categories = {}) {
+  if (!file) throw new Error('未选择小票图片文件')
   const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
   const dailyCats = (categories.daily_categories || DAILY_CATEGORIES).join('/')
   const foodUnits = (categories.food_units || UNITS).join('/')
@@ -124,7 +125,10 @@ export async function recognizeReceipt(file, categories = {}) {
     }
   }
 
-  if (!step1?.items?.length) return null
+  if (!step1?.items?.length) {
+    const preview = (step1Text || '').slice(0, 280).replace(/\s+/g, ' ')
+    throw new Error(`小票识别未提取到商品明细。模型原始返回片段：${preview || '空返回'}`)
+  }
 
   const names = step1.items.map(i => i.name_original).join('\n')
   const step2Text = await callAI([{
