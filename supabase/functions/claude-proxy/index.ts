@@ -58,12 +58,22 @@ Deno.serve(async (req) => {
       .map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
       .filter(Boolean)
       .join('\n')
+    const firstCandidatePreview = (() => {
+      try {
+        return JSON.stringify(candidates[0] || null).slice(0, 1200)
+      } catch {
+        return ''
+      }
+    })()
 
     return new Response(
       JSON.stringify({
         content: [{ type: 'text', text }],
         raw: {
           promptFeedback: data?.promptFeedback || null,
+          usageMetadata: data?.usageMetadata || null,
+          modelVersion: data?.modelVersion || null,
+          firstCandidatePreview,
           candidates: candidates.map((c: any) => ({
             finishReason: c?.finishReason || null,
             parts_count: Array.isArray(c?.content?.parts) ? c.content.parts.length : 0,

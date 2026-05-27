@@ -33,11 +33,17 @@ export async function callAI(messages, aiConfig = {}) {
   const partsCount = data?.raw?.candidates?.[0]?.parts_count
   const partKinds = data?.raw?.candidates?.[0]?.part_kinds
   const blockReason = data?.raw?.promptFeedback?.blockReason
+  const usageMetadata = data?.raw?.usageMetadata
+  const modelVersion = data?.raw?.modelVersion
+  const firstCandidatePreview = data?.raw?.firstCandidatePreview
   const details = [
     finishReason ? `finishReason=${finishReason}` : '',
     blockReason ? `blockReason=${blockReason}` : '',
     Number.isFinite(partsCount) ? `parts_count=${partsCount}` : '',
-    Array.isArray(partKinds) && partKinds.length ? `part_kinds=${partKinds.join('|')}` : ''
+    Array.isArray(partKinds) && partKinds.length ? `part_kinds=${partKinds.join('|')}` : '',
+    modelVersion ? `modelVersion=${modelVersion}` : '',
+    usageMetadata ? `usage=${JSON.stringify(usageMetadata)}` : '',
+    firstCandidatePreview ? `candidate_preview=${firstCandidatePreview}` : ''
   ]
     .filter(Boolean)
     .join(', ')
