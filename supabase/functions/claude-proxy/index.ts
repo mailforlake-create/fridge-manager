@@ -34,6 +34,18 @@ Deno.serve(async (req) => {
     })
 
     const data = await response.json()
+    if (!response.ok) {
+      const upstreamError = data?.error?.message || data?.error || `Gemini上游请求失败（HTTP ${response.status}）`
+      const details = {
+        status: response.status,
+        promptFeedback: data?.promptFeedback || null,
+        finishReason: data?.candidates?.[0]?.finishReason || null
+      }
+      return new Response(
+        JSON.stringify({ error: `${upstreamError} | ${JSON.stringify(details)}` }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
     return new Response(

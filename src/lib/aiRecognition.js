@@ -33,7 +33,7 @@ export async function callAI(messages, aiConfig = {}) {
   const details = [finishReason ? `finishReason=${finishReason}` : '', blockReason ? `blockReason=${blockReason}` : '']
     .filter(Boolean)
     .join(', ')
-  throw new Error(`AI返回为空${details ? `（${details}）` : ''}`)
+  throw new Error(`AI返回为空，请检查模型配置或稍后重试${details ? `（${details}）` : ''}`)
 }
 
 export function fileToBase64(file) {
