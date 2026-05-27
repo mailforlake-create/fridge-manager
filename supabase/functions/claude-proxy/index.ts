@@ -46,9 +46,9 @@ Deno.serve(async (req) => {
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    const firstCandidate = data?.candidates?.[0]
-    const parts = firstCandidate?.content?.parts || []
-    const text = parts
+    const candidates = Array.isArray(data?.candidates) ? data.candidates : []
+    const text = candidates
+      .flatMap((c: any) => (Array.isArray(c?.content?.parts) ? c.content.parts : []))
       .map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
       .filter(Boolean)
       .join('\n')
@@ -58,9 +58,12 @@ Deno.serve(async (req) => {
         content: [{ type: 'text', text }],
         raw: {
           promptFeedback: data?.promptFeedback || null,
-          candidates: (data?.candidates || []).map((c: any) => ({
+          candidates: candidates.map((c: any) => ({
             finishReason: c?.finishReason || null,
-            parts_count: Array.isArray(c?.content?.parts) ? c.content.parts.length : 0
+            parts_count: Array.isArray(c?.content?.parts) ? c.content.parts.length : 0,
+            part_kinds: (Array.isArray(c?.content?.parts) ? c.content.parts : []).map((p: any) =>
+              p?.text !== undefined ? 'text' : p?.inlineData ? 'inlineData' : p?.functionCall ? 'functionCall' : 'unknown'
+            )
           }))
         }
       }),

@@ -30,11 +30,13 @@ export async function callAI(messages, aiConfig = {}) {
 
   const finishReason = data?.raw?.candidates?.[0]?.finishReason
   const partsCount = data?.raw?.candidates?.[0]?.parts_count
+  const partKinds = data?.raw?.candidates?.[0]?.part_kinds
   const blockReason = data?.raw?.promptFeedback?.blockReason
   const details = [
     finishReason ? `finishReason=${finishReason}` : '',
     blockReason ? `blockReason=${blockReason}` : '',
-    Number.isFinite(partsCount) ? `parts_count=${partsCount}` : ''
+    Number.isFinite(partsCount) ? `parts_count=${partsCount}` : '',
+    Array.isArray(partKinds) && partKinds.length ? `part_kinds=${partKinds.join('|')}` : ''
   ]
     .filter(Boolean)
     .join(', ')
