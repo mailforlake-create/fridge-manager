@@ -175,7 +175,20 @@ export async function recognizeReceipt(file, options = {}) {
       has_total: step1?.total_amount !== null && step1?.total_amount !== undefined,
       items_count: step1?.items?.length || 0
     }
-    throw new Error(`小票识别未提取到商品明细。解析结果：${JSON.stringify(meta)}。模型返回片段：${preview || '空返回'}`)
+    let reasonText = ''
+    try {
+      reasonText = await callAI([{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          { type: 'text', text: '你是OCR诊断助手。请简要说明这张小票可能无法稳定识别商品明细的原因（如清晰度、遮挡、换行、编码、品牌字体、价格/折扣行混杂等），并给出3条改进建议。用中文，最多180字。' }
+        ]
+      }], options)
+    } catch {
+      reasonText = ''
+    }
+    const reason = reasonText ? `；模型诊断：${reasonText.slice(0, 220).replace(/\s+/g, ' ')}` : ''
+    throw new Error(`小票识别未提取到商品明细。解析结果：${JSON.stringify(meta)}。模型返回片段：${preview || '空返回'}${reason}`)
   }
 
   const names = step1.items.map(i => i.name_original).join('\n')
