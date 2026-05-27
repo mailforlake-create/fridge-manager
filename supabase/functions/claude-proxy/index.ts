@@ -12,8 +12,14 @@ Deno.serve(async (req) => {
   try {
     const { messages, max_tokens, model_url } = await req.json()
     const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: '服务端未配置 GEMINI_API_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    const targetUrl = `${model_url}?key=${apiKey}`
+    const targetUrl = `${model_url}${String(model_url).includes('?') ? '&' : '?'}key=${apiKey}`
 
     const response = await fetch(targetUrl, {
       method: 'POST',

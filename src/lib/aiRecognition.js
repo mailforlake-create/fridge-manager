@@ -1,4 +1,4 @@
-import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, DAILY_UNITS, isDailyCategory } from './categories'
+import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, DAILY_UNITS } from './categories'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -7,7 +7,8 @@ export async function callAI(messages, aiConfig = {}) {
   const models = aiConfig.ai_models || []
   const selectedName = aiConfig.ai_selected_model || ''
   const selectedModel = models.find(m => m.name === selectedName) || models[0]
-  const modelUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent'
+  const configuredUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+  const modelUrl = configuredUrl.includes(':generateContent') ? configuredUrl : `${configuredUrl}:generateContent`
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
     method: 'POST',
@@ -40,7 +41,7 @@ export async function callAI(messages, aiConfig = {}) {
   ]
     .filter(Boolean)
     .join(', ')
-  throw new Error(`AI返回为空（模型有响应但未解析出文本），请重试或切换模型${details ? `：${details}` : ''}`)
+  throw new Error(`AI返回为空（模型有响应但未解析出文本），请重试或切换模型。当前模型URL：${modelUrl}${details ? `；${details}` : ''}`)
 }
 
 export function fileToBase64(file) {
@@ -69,8 +70,8 @@ export function calcExpiry(mfgDate, shelfDays) {
 }
 
 export async function recognizePhoto(file) {
-  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
-  const foodUnits = (categories.food_units || UNITS).join('/')
+  const foodCats = FOOD_CATEGORIES.join('/')
+  const foodUnits = UNITS.join('/')
   const base64 = await fileToBase64(file)
   const prompt = `你是食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
 name_zh(中文名), name_original(原文，可空), category(${foodCats}),
