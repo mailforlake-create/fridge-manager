@@ -3,6 +3,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export async function callAI(messages, aiConfig = {}) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('AI配置缺失：VITE_SUPABASE_URL 或 VITE_SUPABASE_ANON_KEY 未设置')
+  }
   // 找到当前选中的模型 URL
   const models = aiConfig.ai_models || []
   const selectedName = aiConfig.ai_selected_model || ''
