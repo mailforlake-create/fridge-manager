@@ -189,17 +189,19 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(itemConsumeStep); setEditingQty(false) }}
-          style={{
-            padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            background: consuming ? '#f1f5f9' : '#dbeafe',
-            color: consuming ? '#475569' : '#1d4ed8'
-          }}>
-          {consuming ? '取消' : '使用'}
-        </button>
+        {!isFullyConsumed && (
+          <button onClick={() => { setConsuming(!consuming); setConsumeQty(itemConsumeStep); setEditingQty(false) }}
+            style={{
+              padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+              background: consuming ? '#f1f5f9' : '#dbeafe',
+              color: consuming ? '#475569' : '#1d4ed8'
+            }}>
+            {consuming ? '取消' : '使用'}
+          </button>
+        )}
       </div>
 
-      {consuming && (
+      {!isFullyConsumed && consuming && (
         <div style={{
           marginTop: 10, padding: '12px', borderRadius: 10,
           background: '#fafafa', border: '1px solid #f1f5f9'

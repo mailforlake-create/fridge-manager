@@ -477,18 +477,20 @@ async function saveEdit() {
             </span>
           )}
         </div>
-        <button onClick={() => { setConsuming(!consuming); setConsumeQty(Math.min(remaining, activeConsumeStep)); setEditingQty(false) }}
-          style={{
-            padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            background: consuming ? '#f1f5f9' : '#fef3c7',
-            color: consuming ? '#475569' : '#92400e'
-          }}>
-          {consuming ? '取消' : '食用'}
-        </button>
+        {!isFullyConsumed && (
+          <button onClick={() => { setConsuming(!consuming); setConsumeQty(Math.min(remaining, activeConsumeStep)); setEditingQty(false) }}
+            style={{
+              padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+              background: consuming ? '#f1f5f9' : '#fef3c7',
+              color: consuming ? '#475569' : '#92400e'
+            }}>
+            {consuming ? '取消' : '食用'}
+          </button>
+        )}
       </div>
 
       {/* 消耗面板 */}
-      {consuming && (
+      {!isFullyConsumed && consuming && (
         <div style={{
           marginTop: 10, padding: '12px', borderRadius: 10,
           background: '#fafafa', border: '1px solid #f1f5f9'
