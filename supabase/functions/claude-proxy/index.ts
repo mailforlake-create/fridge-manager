@@ -65,6 +65,13 @@ Deno.serve(async (req) => {
         return ''
       }
     })()
+    const rawResponsePreview = (() => {
+      try {
+        return JSON.stringify(data || null).slice(0, 1800)
+      } catch {
+        return ''
+      }
+    })()
 
     return new Response(
       JSON.stringify({
@@ -73,7 +80,9 @@ Deno.serve(async (req) => {
           promptFeedback: data?.promptFeedback || null,
           usageMetadata: data?.usageMetadata || null,
           modelVersion: data?.modelVersion || null,
+          candidateCount: candidates.length,
           firstCandidatePreview,
+          rawResponsePreview,
           candidates: candidates.map((c: any) => ({
             finishReason: c?.finishReason || null,
             parts_count: Array.isArray(c?.content?.parts) ? c.content.parts.length : 0,
