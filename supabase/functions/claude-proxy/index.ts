@@ -46,14 +46,22 @@ Deno.serve(async (req) => {
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const firstCandidate = data?.candidates?.[0]
+    const parts = firstCandidate?.content?.parts || []
+    const text = parts
+      .map((p: any) => (typeof p?.text === 'string' ? p.text : ''))
+      .filter(Boolean)
+      .join('\n')
 
     return new Response(
       JSON.stringify({
         content: [{ type: 'text', text }],
         raw: {
           promptFeedback: data?.promptFeedback || null,
-          candidates: (data?.candidates || []).map((c: any) => ({ finishReason: c?.finishReason || null }))
+          candidates: (data?.candidates || []).map((c: any) => ({
+            finishReason: c?.finishReason || null,
+            parts_count: Array.isArray(c?.content?.parts) ? c.content.parts.length : 0
+          }))
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

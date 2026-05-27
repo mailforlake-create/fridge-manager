@@ -29,11 +29,16 @@ export async function callAI(messages, aiConfig = {}) {
   if (text) return text
 
   const finishReason = data?.raw?.candidates?.[0]?.finishReason
+  const partsCount = data?.raw?.candidates?.[0]?.parts_count
   const blockReason = data?.raw?.promptFeedback?.blockReason
-  const details = [finishReason ? `finishReason=${finishReason}` : '', blockReason ? `blockReason=${blockReason}` : '']
+  const details = [
+    finishReason ? `finishReason=${finishReason}` : '',
+    blockReason ? `blockReason=${blockReason}` : '',
+    Number.isFinite(partsCount) ? `parts_count=${partsCount}` : ''
+  ]
     .filter(Boolean)
     .join(', ')
-  throw new Error(`AI返回为空，请检查模型配置或稍后重试${details ? `（${details}）` : ''}`)
+  throw new Error(`AI返回为空（模型有响应但未解析出文本），请重试或切换模型${details ? `：${details}` : ''}`)
 }
 
 export function fileToBase64(file) {
