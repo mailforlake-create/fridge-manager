@@ -92,7 +92,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function handleFile(file) {
     setLoading(true)
     try {
-      const data = await recognizeReceipt(file)
+      const data = await recognizeReceipt(file, settings)
       if (data && data.items) {
         setReceiptData(data)
         const items = data.items.map(i => ({ ...i, mfg_date: '', shelf_days: '', memo: '' }))

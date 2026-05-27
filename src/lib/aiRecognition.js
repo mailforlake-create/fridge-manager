@@ -69,9 +69,9 @@ export function calcExpiry(mfgDate, shelfDays) {
   return d.toISOString().split('T')[0]
 }
 
-export async function recognizePhoto(file) {
-  const foodCats = FOOD_CATEGORIES.join('/')
-  const foodUnits = UNITS.join('/')
+export async function recognizePhoto(file, options = {}) {
+  const foodCats = (options.food_categories || FOOD_CATEGORIES).join('/')
+  const foodUnits = (options.food_units || UNITS).join('/')
   const base64 = await fileToBase64(file)
   const prompt = `你是食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
 name_zh(中文名), name_original(原文，可空), category(${foodCats}),
@@ -83,19 +83,19 @@ quantity(数字), unit(${foodUnits}), expiry_date(YYYY-MM-DD或空字符串)
       { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } },
       { type: 'text', text: prompt }
     ]
-  }])
+  }], options)
   return parseIngredients(text)
 }
 
-export async function recognizeReceipt(file, categories = {}) {
+export async function recognizeReceipt(file, options = {}) {
   if (!file) throw new Error('未选择小票图片文件')
-  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
-  const dailyCats = (categories.daily_categories || DAILY_CATEGORIES).join('/')
-  const foodUnits = (categories.food_units || UNITS).join('/')
-  const dailyUnits = (categories.daily_units || DAILY_UNITS).join('/')
+  const foodCats = (options.food_categories || FOOD_CATEGORIES).join('/')
+  const dailyCats = (options.daily_categories || DAILY_CATEGORIES).join('/')
+  const foodUnits = (options.food_units || UNITS).join('/')
+  const dailyUnits = (options.daily_units || DAILY_UNITS).join('/')
   const allUnits = [...new Set([
-    ...(categories.food_units || UNITS),
-    ...(categories.daily_units || DAILY_UNITS)
+    ...(options.food_units || UNITS),
+    ...(options.daily_units || DAILY_UNITS)
   ])].join('/')
   const base64 = await fileToBase64(file)
   const mediaType = file.type || 'image/jpeg'
@@ -117,7 +117,7 @@ export async function recognizeReceipt(file, categories = {}) {
 重要规则：折扣行（割引/値引等）不要单独列出，合并到上一行商品的discount_info，设is_discount=true。
 只输出JSON。` }
     ]
-  }])
+  }], options)
 
   let step1
   try {
@@ -162,7 +162,7 @@ export async function recognizeReceipt(file, categories = {}) {
 商品列表：
 ${names}
 只输出JSON数组。`
-  }])
+  }], options)
 
   let translations = []
   try {
