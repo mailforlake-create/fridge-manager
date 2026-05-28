@@ -349,8 +349,13 @@ export default function Settings() {
             {/* 添加新模型 */}
             <button
                 onClick={() => {
-                const newModels = [...(localSettings.ai_models || []), { name: '', url: '' }]
-                update('ai_models', newModels)
+                  const newModels = [...(localSettings.ai_models || []), {
+                    name: '',
+                    url: '',
+                    key_var: 'GEMINI_API_KEY',
+                    api_type: 'gemini'
+                  }]
+                  update('ai_models', newModels)
                 }}
                 style={{
                 marginTop: 10, width: '100%', padding: '8px 0', borderRadius: 8,
