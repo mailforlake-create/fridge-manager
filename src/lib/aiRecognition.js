@@ -70,24 +70,18 @@ quantity(数字), unit(${foodUnits}), expiry_date(YYYY-MM-DD或空字符串)
 }
 
 export async function recognizeReceipt(file, categories = {}) {
+  const base64 = await fileToBase64(file)
+  const mediaType = file.type || 'image/jpeg'
   const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
   const dailyCats = (categories.daily_categories || DAILY_CATEGORIES).join('/')
-  const foodUnits = (categories.food_units || UNITS).join('/')
-  const dailyUnits = (categories.daily_units || DAILY_UNITS).join('/')
   const allUnits = [...new Set([
     ...(categories.food_units || UNITS),
     ...(categories.daily_units || DAILY_UNITS)
   ])].join('/')
-  const base64 = await fileToBase64(file)
-  const mediaType = file.type || 'image/jpeg'
+  
+  const prompt = `你是专业购物小票识别助手。仔细阅读这张小票图片，识别所有商品信息。
 
-  const step1Text = await callAI([{
-    role: 'user',
-    content: [
-      { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-      { type: 'text', text: `你是专业的购物小票识别助手。请仔细识别这张小票上的【所有商品】，不要遗漏任何一件。
-
-输出JSON格式：
+输出以下JSON格式（只输出JSON，不要任何说明）：
 {
   "store_name": "商家中文名",
   "store_name_original": "商家原文名",
@@ -95,98 +89,95 @@ export async function recognizeReceipt(file, categories = {}) {
   "total_amount": 合计金额数字或null,
   "items": [
     {
-      "name_original": "商品原文名称（完整保留）",
+      "name_zh": "商品中文名",
+      "name_original": "商品原文名（完整保留）",
+      "category": "从以下选择：${foodCats}/${dailyCats}/其他",
+      "quantity": 数量数字,
+      "unit": "从以下选择：${allUnits}",
       "price": 实付单价数字或null,
       "original_price": 原价数字或null,
       "is_discount": true或false,
-      "discount_info": "折扣说明或空字符串",
-      "quantity": 数量数字
+      "discount_info": "折扣说明或空字符串"
     }
   ]
 }
 
-重要规则：
-1. 必须列出小票上【每一件】商品，不能只返回部分
-2. 折扣行（割引/値引/セール等）不单独列出，合并到上一行商品的discount_info字段
-3. 小计行、合计行、税额行不作为商品列出
-4. 如果看不清某件商品名称，用可识别的部分代替，不要忽略该商品
-5. 只输出JSON，不要任何说明文字` }
-    ]
-  }])
+规则：
+- items必须包含小票上每一件商品，绝对不能遗漏
+- 折扣行合并到上一件商品的discount_info，不单独列出
+- 合计/小计/税额行不列入items
+- 商品名直接翻译成中文，保留原文在name_original`
 
-  let step1
+ const text = await callAI([{
+  role: 'user',
+  content: [
+    { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+    { type: 'text', text: prompt }
+  ]
+}], { ...categories, ai_max_tokens: 8192 })  // ← 小票识别用更大的 token 限制
+
+  let result = null
   try {
-    const c1 = step1Text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-    step1 = JSON.parse(c1)
-  } catch {
-    const storeMatch = step1Text.match(/"store_name"\s*:\s*"([^"]*)"/)
-    const storeOrigMatch = step1Text.match(/"store_name_original"\s*:\s*"([^"]*)"/)
-    const dateMatch = step1Text.match(/"purchased_at"\s*:\s*"([^"]*)"/)
-    const totalMatch = step1Text.match(/"total_amount"\s*:\s*(\d+)/)
-    const itemRegex = /\{\s*"name_original"\s*:[^}]+\}/g
-    const items = []
-    let m
-    while ((m = itemRegex.exec(step1Text)) !== null) {
-      try { items.push(JSON.parse(m[0])) } catch {}
+    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    // 先尝试完整解析
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (match) {
+      try {
+        result = JSON.parse(match[0])
+      } catch {
+        // JSON 被截断，尝试修复：提取 items 数组中已完整的部分
+        const itemsMatch = cleaned.match(/"items"\s*:\s*\[[\s\S]*/)
+        if (itemsMatch) {
+          // 找出所有完整的 {} 对象
+          const itemStr = itemsMatch[0]
+          const completeItems = []
+          const itemRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}/g
+          let m
+          while ((m = itemRegex.exec(itemStr)) !== null) {
+            try {
+              completeItems.push(JSON.parse(m[0]))
+            } catch {}
+          }
+          if (completeItems.length > 0) {
+            // 提取头部信息
+            const storeMatch = cleaned.match(/"store_name"\s*:\s*"([^"]*)"/)
+            const storeOrigMatch = cleaned.match(/"store_name_original"\s*:\s*"([^"]*)"/)
+            const dateMatch = cleaned.match(/"purchased_at"\s*:\s*"([^"]*)"/)
+            const totalMatch = cleaned.match(/"total_amount"\s*:\s*(\d+)/)
+            result = {
+              store_name: storeMatch?.[1] || '',
+              store_name_original: storeOrigMatch?.[1] || '',
+              purchased_at: dateMatch?.[1] || '',
+              total_amount: totalMatch ? Number(totalMatch[1]) : null,
+              items: completeItems
+            }
+          }
+        }
+      }
     }
-    step1 = {
-      store_name: storeMatch?.[1] || '未知商家',
-      store_name_original: storeOrigMatch?.[1] || '',
-      purchased_at: dateMatch?.[1] || '',
-      total_amount: totalMatch ? Number(totalMatch[1]) : null,
-      items
-    }
+  } catch (e) {
+    console.error('解析失败', e)
   }
 
-  if (!step1?.items?.length) return null
+  if (!result?.items?.length) return null
 
-  const names = step1.items.map(i => i.name_original).join('\n')
-  const step2Text = await callAI([{
-    role: 'user',
-    content: `你是专业的商品名称翻译助手。将以下【全部】日文/英文商品名翻译成中文并分类。
-
-必须对每一个商品名进行翻译，输入几个就输出几个，数量必须完全一致。
-
-输出JSON数组，每项包含：
-{"name_original":"原文（原样保留）","name_zh":"中文名","category":"${foodCats}/${dailyCats}/其他","unit":"${allUnits}"}
-
-商品列表（共${step1.items.length}件，必须全部翻译）：
-${names}
-
-只输出JSON数组，不要任何说明文字。`
-  }])
-
-  let translations = []
-  try {
-    const c2 = step2Text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-    const match = c2.match(/\[[\s\S]*\]/)
-    if (match) translations = JSON.parse(match[0])
-  } catch (e) { console.error('翻译解析失败', e) }
-
-  const items = step1.items.map((item, i) => {
-    const trans = translations[i] || {}
-    return {
-      name_zh: trans.name_zh || item.name_original,
-      name_original: item.name_original,
-      category: trans.category || '其他',
+  return {
+    store_name: result.store_name || '未知商家',
+    store_name_original: result.store_name_original || '',
+    purchased_at: result.purchased_at || '',
+    total_amount: result.total_amount || null,
+    items: result.items.map(item => ({
+      name_zh: item.name_zh || item.name_original || '',
+      name_original: item.name_original || '',
+      category: item.category || '其他',
       quantity: item.quantity || 1,
-      unit: trans.unit || '个',
+      unit: item.unit || '个',
       price: item.price || null,
       original_price: item.original_price || null,
       is_discount: item.is_discount || false,
       discount_info: item.discount_info || '',
       expiry_date: '',
-      mfg_date: '',
-      shelf_days: '',
       memo: ''
-    }
-  })
-
-  return {
-    store_name: step1.store_name,
-    store_name_original: step1.store_name_original,
-    purchased_at: step1.purchased_at,
-    total_amount: step1.total_amount,
-    items
+    }))
   }
 }
