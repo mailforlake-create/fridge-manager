@@ -7,7 +7,7 @@ export async function callAI(messages, aiConfig = {}) {
   const models = aiConfig.ai_models || []
   const selectedName = aiConfig.ai_selected_model || ''
   const selectedModel = models.find(m => m.name === selectedName) || models[0]
-  const modelUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent'
+  const modelUrl = selectedModel?.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/claude-proxy`, {
     method: 'POST',
