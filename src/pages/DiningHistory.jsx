@@ -96,7 +96,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
             if (!activeIngredientId) return
             setSelected(s => {
               if (!s[activeIngredientId]) return s
-              const ing = ingredients.find(i => String(i.id) === String(activeIngredientId))
+              const ing = findIngredientById(ingredients, activeIngredientId)
               const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
               return {
                 ...s,
@@ -227,6 +227,14 @@ const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
 const mealLabel = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '点心' }
 const mealIcon = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍪' }
 
+function isSameId(a, b) {
+  return a != null && b != null && String(a) === String(b)
+}
+
+function findIngredientById(ingredients, id) {
+  return ingredients.find(i => isSameId(i.id, id))
+}
+
 const smallField = {
   width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
   border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
@@ -344,7 +352,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
     return Math.round((price * qty / (ing.quantity || 1)) * 10) / 10
   }
 
-  const existingIngIds = new Set(items.map(i => i.ingredient_id).filter(Boolean))
+  const existingIngIds = new Set(items.map(i => i.ingredient_id).filter(Boolean).map(String))
 
   async function save() {
     setSaving(true)
@@ -390,14 +398,14 @@ function EditDiningModal({ record, onClose, onSaved }) {
             await supabase.from('dining_items').update({
               consumed_quantity: Number(item.qty_edit) || item.consumed_quantity,
               price_contribution: item.ingredient_id
-                ? calcCost(ingredients.find(i => i.id === item.ingredient_id), Number(item.qty_edit))
+                ? calcCost(findIngredientById(ingredients, item.ingredient_id), Number(item.qty_edit))
                 : null
             }).eq('id', item.id)
           }
         }
 
         const newItems = Object.entries(addSelected).map(([id, s]) => {
-          const ing = ingredients.find(i => i.id === id)
+          const ing = findIngredientById(ingredients, id)
           if (!ing) return null
           return {
             dining_id: record.id,
@@ -407,7 +415,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
             quantity: ing.quantity,
             unit: ing.unit || '个',
             consumed_quantity: s.qty,
-            ingredient_id: id,
+            ingredient_id: ing.id,
             update_consumed: false,
             price_contribution: calcCost(ing, s.qty)
           }
@@ -416,11 +424,11 @@ function EditDiningModal({ record, onClose, onSaved }) {
 
         const existingCost = items.reduce((sum, item) => {
           if (!item.ingredient_id) return sum
-          const ing = ingredients.find(i => i.id === item.ingredient_id)
+          const ing = findIngredientById(ingredients, item.ingredient_id)
           return sum + calcCost(ing, Number(item.qty_edit))
         }, 0)
         const addedCost = Object.entries(addSelected).reduce((sum, [id, s]) => {
-          const ing = ingredients.find(i => i.id === id)
+          const ing = findIngredientById(ingredients, id)
           return sum + (ing ? calcCost(ing, s.qty) : 0)
         }, 0)
         const newCost = existingCost + addedCost
@@ -586,7 +594,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
                     dinedAt={record.dined_at}
                     selected={addSelected}
                     setSelected={setAddSelected}
-                    ingredients={ingredients.filter(i => !existingIngIds.has(i.id))}
+                    ingredients={ingredients.filter(i => !existingIngIds.has(String(i.id)))}
                     loading={false}
                   />
                 </div>
@@ -657,7 +665,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
   }
 
   const totalCost = Object.entries(selected).reduce((sum,[id, s]) => {
-    const ing = ingredients.find(i => i.id === id)
+    const ing = findIngredientById(ingredients, id)
     return sum + (ing ? calcIngredientCost(ing, s.qty) : 0)
   }, 0)
 
@@ -666,7 +674,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
     try {
       const entries = Object.entries(selected)
       for (const [ingId, s] of entries) {
-        const ing = ingredients.find(i => i.id === ingId)
+        const ing = findIngredientById(ingredients, ingId)
         if (!ing) continue
         const cost = calcIngredientCost(ing, s.qty)
 
@@ -685,7 +693,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
             quantity: ing.quantity,
             unit: ing.unit || '个',
             consumed_quantity: s.qty,
-            ingredient_id: ingId,
+            ingredient_id: ing.id,
             update_consumed: s.updateConsumed,
             price_contribution: cost
           })
@@ -697,7 +705,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
             ing.quantity || 0
           )
           const isFullyConsumed = newConsumed >= (ing.quantity || 0)
-          await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingId)
+          await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ing.id)
           if (ing.purchase_item_id && isFullyConsumed) {
             await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
           }
@@ -745,7 +753,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
               if (!activeIngredientId) return
               setSelected(s => {
                 if (!s[activeIngredientId]) return s
-                const ing = filtered.find(i => String(i.id) === String(activeIngredientId))
+                const ing = findIngredientById(filtered, activeIngredientId)
                 const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
                 return {
                   ...s,
@@ -938,7 +946,7 @@ function AddDiningModal({ onClose, onSaved }) {
   }
 
   const totalHomeCost = Object.entries(homeSelected).reduce((sum, [id, s]) => {
-    const ing = ingredients.find(i => i.id === id)
+    const ing = findIngredientById(ingredients, id)
     return sum + (ing ? calcCost(ing, s.qty) : 0)
   }, 0)
 
@@ -1031,7 +1039,7 @@ function AddDiningModal({ onClose, onSaved }) {
 
         if (diningType === 'home' && Object.keys(homeSelected).length > 0) {
           Object.entries(homeSelected).forEach(([id, s]) => {
-            const ing = ingredients.find(i => i.id === id)
+            const ing = findIngredientById(ingredients, id)
             if (!ing) return
             dishesToInsert.push({
               dining_id: dining.id,
@@ -1041,7 +1049,7 @@ function AddDiningModal({ onClose, onSaved }) {
               quantity: ing.quantity,
               unit: ing.unit || '个',
               consumed_quantity: s.qty,
-              ingredient_id: id,
+              ingredient_id: ing.id,
               update_consumed: s.updateConsumed || false,
               price_contribution: calcCost(ing, s.qty)
             })
@@ -1065,7 +1073,7 @@ function AddDiningModal({ onClose, onSaved }) {
         if (diningType === 'home') {
           for (const[id, s] of Object.entries(homeSelected)) {
             if (!s.updateConsumed) continue
-            const ing = ingredients.find(i => i.id === id)
+            const ing = findIngredientById(ingredients, id)
             if (!ing) continue
             const newConsumed = parseFloat(Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0).toFixed(2))
             const isFully = newConsumed >= (ing.quantity || 0)
