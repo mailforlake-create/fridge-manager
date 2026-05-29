@@ -34,7 +34,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
   }
 
   const filteredIng = ingredients.filter(i => {
-    const remaining = (i.quantity || 0) - (i.consumed_quantity || 0)
+    const remaining = getIngredientRemaining(i)
     if (ingFilterStatus === 'active' && remaining <= 0) return false
     if (ingFilterStatus === 'consumed' && remaining > 0) return false
     if (ingFilterCategory && i.category !== ingFilterCategory) return false
@@ -97,22 +97,21 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
             setSelected(s => {
               if (!s[activeIngredientId]) return s
               const ing = findIngredientById(ingredients, activeIngredientId)
-              const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
               return {
                 ...s,
-                [activeIngredientId]: { ...s[activeIngredientId], qty: Math.min(remaining, step) }
+                [activeIngredientId]: { ...s[activeIngredientId], qty: ing ? clampIngredientQty(ing, step, 0.01) : step }
               }
             })
-          }} disabled={filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
+          }} disabled={filteredIng.every(ing => getIngredientSelectableLimit(ing) < step)}
             style={{
               padding: '3px 8px',
               borderRadius: 999,
               fontSize: 12,
               border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
-              background: filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
-              color: filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
-              cursor: filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? 'not-allowed' : 'pointer',
-              opacity: filteredIng.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? 0.7 : 1
+              background: filteredIng.every(ing => getIngredientSelectableLimit(ing) < step) ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
+              color: filteredIng.every(ing => getIngredientSelectableLimit(ing) < step) ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
+              cursor: filteredIng.every(ing => getIngredientSelectableLimit(ing) < step) ? 'not-allowed' : 'pointer',
+              opacity: filteredIng.every(ing => getIngredientSelectableLimit(ing) < step) ? 0.7 : 1
             }}>
             {step}
           </button>
@@ -128,10 +127,11 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
               <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>没有符合条件的食材</div>
             )}
             {pagedIng.map(ing => {
-              const remaining = parseFloat(((ing.quantity || 0) - (ing.consumed_quantity || 0)).toFixed(2))
+              const remaining = getIngredientRemaining(ing)
+              const selectableLimit = getIngredientSelectableLimit(ing)
               const isSelected = !!selected[ing.id]
               const sel = selected[ing.id]
-              const cost = isSelected ? calcCost(ing, sel?.qty || 1) : 0
+              const cost = isSelected ? calcCost(ing, sel?.qty ?? 1) : 0
               const storeName = ing.purchase_item?.purchase_history?.store_name
               const purchasedAt = ing.purchase_item?.purchase_history?.purchased_at
 
@@ -146,7 +146,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                       setSelected(s => {
                         if (s[ing.id]) { const n = { ...s }; delete n[ing.id]; if (String(activeIngredientId) === String(ing.id)) setActiveIngredientId(null); return n }
                         setActiveIngredientId(ing.id)
-                        return { ...s,[ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false } }
+                        return { ...s,[ing.id]: { qty: clampIngredientQty(ing, activeQtyStep, 0.01), updateConsumed: false } }
                       })
                     }} style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2, cursor: 'pointer',
@@ -175,13 +175,13 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                             {String(activeIngredientId) === String(ing.id) ? '当前步长应用对象' : '点击此区域设为步长应用对象'}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0.01, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)), 0.01) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" step={activeQtyStep} max={remaining} value={sel?.qty || 1}
-                              onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, Number(e.target.value) || 0)) } }))}
+                            <input type="number" step={activeQtyStep} max={selectableLimit} value={sel?.qty ?? 1}
+                              onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, e.target.value, 0) } }))}
                               style={{ width: 55, textAlign: 'center', padding: '3px 6px', borderRadius: 6, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none' }} />
                             <span style={{ fontSize: 12, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2)), 0.01) } }))}
                               style={{ width: 24, height: 24, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                             {cost > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
                           </div>
@@ -233,6 +233,21 @@ function isSameId(a, b) {
 
 function findIngredientById(ingredients, id) {
   return ingredients.find(i => isSameId(i.id, id))
+}
+
+function getIngredientRemaining(ingredient) {
+  const remaining = (Number(ingredient?.quantity) || 0) - (Number(ingredient?.consumed_quantity) || 0)
+  return Math.max(0, parseFloat(remaining.toFixed(2)))
+}
+
+function getIngredientSelectableLimit(ingredient) {
+  const remaining = getIngredientRemaining(ingredient)
+  return remaining > 0 ? remaining : (Number(ingredient?.quantity) || 1)
+}
+
+function clampIngredientQty(ingredient, qty, min = 0) {
+  const limit = getIngredientSelectableLimit(ingredient)
+  return Math.min(limit, Math.max(min, Number(qty) || 0))
 }
 
 const smallField = {
@@ -617,12 +632,16 @@ function EditDiningModal({ record, onClose, onSaved }) {
   )
 }
 
-function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onClose, onSaved }) {
+function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSaved }) {
+  const { settings } = useSettings()
   const [ingredients, setIngredients] = useState([])
   const[selected, setSelected] = useState({})
   const [activeIngredientId, setActiveIngredientId] = useState(null)
   const [showConsumed, setShowConsumed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
+  const QUICK_STEPS = [0.01, 0.1, 1, 5, 10]
+  const [activeQtyStep, setActiveQtyStep] = useState(diningQtyStep)
 
   useEffect(() => {
     fetchIngredients()
@@ -647,7 +666,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
   }
 
   const filtered = ingredients.filter(i =>
-    showConsumed ? true : (i.quantity || 0) > (i.consumed_quantity || 0)
+    showConsumed ? true : getIngredientRemaining(i) > 0
   )
 
   function toggleSelect(ing) {
@@ -659,8 +678,7 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
         return next
       }
       setActiveIngredientId(ing.id)
-      const remaining = (ing.quantity || 1) - (ing.consumed_quantity || 0)
-      return { ...s, [ing.id]: { qty: Math.min(remaining, activeQtyStep), updateConsumed: false, existingItemId: null } }
+      return { ...s, [ing.id]: { qty: clampIngredientQty(ing, activeQtyStep, 0.01), updateConsumed: false, existingItemId: null } }
     })
   }
 
@@ -754,22 +772,21 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
               setSelected(s => {
                 if (!s[activeIngredientId]) return s
                 const ing = findIngredientById(filtered, activeIngredientId)
-                const remaining = ing ? ((ing.quantity || 0) - (ing.consumed_quantity || 0)) : step
                 return {
                   ...s,
-                  [activeIngredientId]: { ...s[activeIngredientId], qty: Math.min(remaining, step) }
+                  [activeIngredientId]: { ...s[activeIngredientId], qty: ing ? clampIngredientQty(ing, step, 0.01) : step }
                 }
               })
-            }} disabled={filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step)}
+            }} disabled={filtered.every(ing => getIngredientSelectableLimit(ing) < step)}
               style={{
                 padding: '4px 8px',
                 borderRadius: 999,
                 fontSize: 12,
                 border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
-                background: filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
-                color: filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
-                cursor: filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? 'not-allowed' : 'pointer',
-                opacity: filtered.every(ing => ((ing.quantity || 0) - (ing.consumed_quantity || 0)) < step) ? 0.7 : 1
+                background: filtered.every(ing => getIngredientSelectableLimit(ing) < step) ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
+                color: filtered.every(ing => getIngredientSelectableLimit(ing) < step) ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
+                cursor: filtered.every(ing => getIngredientSelectableLimit(ing) < step) ? 'not-allowed' : 'pointer',
+                opacity: filtered.every(ing => getIngredientSelectableLimit(ing) < step) ? 0.7 : 1
               }}>
               {step}
             </button>
@@ -778,10 +795,11 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {filtered.map(ing => {
-            const remaining = (ing.quantity || 0) - (ing.consumed_quantity || 0)
+            const remaining = getIngredientRemaining(ing)
+            const selectableLimit = getIngredientSelectableLimit(ing)
             const isSelected = !!selected[ing.id]
             const sel = selected[ing.id]
-            const cost = isSelected ? calcIngredientCost(ing, sel?.qty || 1) : 0
+            const cost = isSelected ? calcIngredientCost(ing, sel?.qty ?? 1) : 0
 
             return (
               <div key={ing.id} style={{
@@ -812,13 +830,13 @@ function IngredientSelectModal({ diningId, dinedAt, mealTime, existingItems, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ fontSize: 12, color: '#475569', width: 60 }}>使用量</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0.01, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, parseFloat(((s[ing.id]?.qty || 1) - activeQtyStep).toFixed(2)), 0.01) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                            <input type="number" value={sel?.qty || 1} step={activeQtyStep} max={remaining}
-                              onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: Math.min(remaining, Math.max(0, Number(e.target.value) || 0)) } }))}
+                            <input type="number" value={sel?.qty ?? 1} step={activeQtyStep} max={selectableLimit}
+                              onChange={e => setSelected(s => ({ ...s, [ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, e.target.value, 0) } }))}
                               style={{ width: 60, textAlign: 'center', ...smallField }} />
                             <span style={{ fontSize: 13, color: '#475569' }}>{ing.unit}</span>
-                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: Math.min(remaining, parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2))) } }))}
+                            <button onClick={() => setSelected(s => ({ ...s,[ing.id]: { ...s[ing.id], qty: clampIngredientQty(ing, parseFloat(((s[ing.id]?.qty || 1) + activeQtyStep).toFixed(2)), 0.01) } }))}
                               style={{ width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', color: '#475569', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                           </div>
                           {cost > 0 && <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>¥{cost.toFixed(1)}</span>}
