@@ -1456,6 +1456,8 @@ export default function DiningHistory() {
   const [editingRecord, setEditingRecord] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
   const [selectingIngredients, setSelectingIngredients] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [deletingRecord, setDeletingRecord] = useState(false)
   const [photos, setPhotos] = useState({})
   const[uploadingKey, setUploadingKey] = useState(null)
   const [filterType, setFilterType] = useState('all')
@@ -1525,9 +1527,25 @@ export default function DiningHistory() {
     } catch (e) { alert('删除失败：' + e.message) }
   }
 
-  async function deleteRecord(id) {
-    await supabase.from('dining_history').delete().eq('id', id)
+  function confirmDeleteRecord(record) {
+    setDeleteConfirm(record)
+  }
+
+  async function deleteRecordConfirmed() {
+    if (!deleteConfirm || deletingRecord) return
+
+    setDeletingRecord(true)
+    const id = deleteConfirm.id
+    const { error } = await supabase.from('dining_history').delete().eq('id', id)
+    setDeletingRecord(false)
+
+    if (error) {
+      alert('删除失败：' + error.message)
+      return
+    }
+
     setRecords(records.filter(r => r.id !== id))
+    setDeleteConfirm(null)
   }
 
   function handleSaveMemo(itemId, memo) {
@@ -1690,7 +1708,7 @@ export default function DiningHistory() {
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                               <button onClick={() => setEditingRecord(r)} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
-                                              <button onClick={() => deleteRecord(r.id)} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
+                                              <button onClick={e => { e.stopPropagation(); confirmDeleteRecord(r) }} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
                                               <div onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))} style={{ fontSize: 16, color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
                                                 {expanded[r.id] ? '▲' : '▼'}
                                               </div>
@@ -1763,6 +1781,33 @@ export default function DiningHistory() {
               </div>
             )
           })}
+        </div>
+      )}
+
+
+      {deleteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 3000, padding: 24
+        }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>删除餐饮记录</div>
+            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>
+              确定要删除这条{deleteConfirm.dining_type === 'home' ? '自炊' : '外食'}记录吗？删除后无法恢复。
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button onClick={deleteRecordConfirmed} disabled={deletingRecord} style={{
+                padding: '11px 0', borderRadius: 10, background: '#ef4444',
+                color: '#fff', fontSize: 15, fontWeight: 700,
+                opacity: deletingRecord ? 0.7 : 1
+              }}>{deletingRecord ? '删除中...' : '确认删除'}</button>
+              <button onClick={() => setDeleteConfirm(null)} disabled={deletingRecord} style={{
+                padding: '11px 0', borderRadius: 10, background: '#fff',
+                color: '#94a3b8', fontSize: 14, border: '1px solid #e2e8f0'
+              }}>取消</button>
+            </div>
+          </div>
         </div>
       )}
 
