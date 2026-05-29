@@ -266,6 +266,24 @@ function calcIngredientCost(ingredient, consumedQty) {
   return Math.round((price * consumedQty / totalQty) * 10) / 10
 }
 
+function getDiningItemCost(item) {
+  const savedCost = Number(item?.price_contribution) || 0
+  if (savedCost > 0) return savedCost
+
+  const ingredient = item?.ingredient
+  if (!ingredient) return 0
+
+  const consumedQty = Number(item?.consumed_quantity || item?.quantity) || 0
+  return calcIngredientCost(ingredient, consumedQty)
+}
+
+function getDiningRecordHomeCost(record) {
+  const savedCost = Number(record?.home_cost) || 0
+  if (savedCost > 0) return savedCost
+
+  return (record?.dining_items || []).reduce((sum, item) => sum + getDiningItemCost(item), 0)
+}
+
 function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, uploading, onClose, onSaveMemo }) {
   const[memo, setMemo] = useState(item.memo || '')
   const [saving, setSaving] = useState(false)
@@ -289,8 +307,8 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
           {item.name_original && <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>{item.name_original}</div>}
           <div style={{ fontSize: 14, color: '#475569' }}>
             {item.consumed_quantity || item.quantity}{item.unit}
-            {item.price_contribution > 0 && (
-              <span style={{ marginLeft: 8, fontWeight: 600, color: '#16a34a' }}>成本 ¥{item.price_contribution}</span>
+            {getDiningItemCost(item) > 0 && (
+              <span style={{ marginLeft: 8, fontWeight: 600, color: '#16a34a' }}>成本 ¥{getDiningItemCost(item).toFixed(1)}</span>
             )}
           </div>
         </div>
@@ -1446,11 +1464,21 @@ export default function DiningHistory() {
 
   async function fetchRecords() {
     setLoading(true)
-    const { data } = await supabase
+    let { data, error } = await supabase
       .from('dining_history')
-      .select(`*, dining_items(*)`)
+      .select(`*, dining_items(*, ingredient:ingredient_id(quantity, purchase_item:purchase_item_id(price)))`)
       .order('dined_at', { ascending: false })
       .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('Failed to fetch dining ingredient costs:', error)
+      const fallback = await supabase
+        .from('dining_history')
+        .select(`*, dining_items(*)`)
+        .order('dined_at', { ascending: false })
+        .order('created_at', { ascending: false })
+      data = fallback.data
+    }
 
     setRecords(data ||[])
     if (data?.length) await fetchPhotos(data.map(r => r.id))
@@ -1623,7 +1651,9 @@ export default function DiningHistory() {
                                     {new Date(day).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })}
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => (
+                                    {[...dayRecords].sort((a, b) => (mealOrder[a.meal_time] ?? 4) - (mealOrder[b.meal_time] ?? 4)).map(r => {
+                                      const displayHomeCost = getDiningRecordHomeCost(r)
+                                      return (
                                       <div key={r.id} style={{
                                         background: '#fff', borderRadius: 12, overflow: 'hidden',
                                         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -1647,9 +1677,9 @@ export default function DiningHistory() {
                                                   {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
                                                 </div>
                                               )}
-                                              {r.dining_type === 'home' && r.home_cost > 0 && (
+                                              {r.dining_type === 'home' && displayHomeCost > 0 && (
                                                 <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 4 }}>
-                                                  成本 ¥{r.home_cost.toFixed(1)}
+                                                  成本 ¥{displayHomeCost.toFixed(1)}
                                                 </div>
                                               )}
                                               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
@@ -1707,8 +1737,8 @@ export default function DiningHistory() {
                                                         )}
                                                       </>
                                                     )}
-                                                    {item.price_contribution > 0 && r.dining_type === 'home' && (
-                                                      <div style={{ fontSize: 11, color: '#16a34a' }}>¥{item.price_contribution}</div>
+                                                    {getDiningItemCost(item) > 0 && r.dining_type === 'home' && (
+                                                      <div style={{ fontSize: 11, color: '#16a34a' }}>¥{getDiningItemCost(item).toFixed(1)}</div>
                                                     )}
                                                   </div>
                                                   <span style={{ fontSize: 16, color: '#94a3b8' }}>›</span>
@@ -1718,7 +1748,8 @@ export default function DiningHistory() {
                                           </div>
                                         )}
                                       </div>
-                                    ))}
+                                      )
+                                    })}
                                   </div>
                                 </div>
                               ))}
