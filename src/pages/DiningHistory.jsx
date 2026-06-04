@@ -250,6 +250,14 @@ function clampIngredientQty(ingredient, qty, min = 0) {
   return Math.min(limit, Math.max(min, Number(qty) || 0))
 }
 
+function getDiningItemConsumedQty(item) {
+  return Number(item?.consumed_quantity || item?.quantity) || 0
+}
+
+function formatDiningItemQty(item) {
+  return `${getDiningItemConsumedQty(item)}${item?.unit || ''}`
+}
+
 const smallField = {
   width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
   border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
@@ -273,8 +281,7 @@ function getDiningItemCost(item) {
   const ingredient = item?.ingredient
   if (!ingredient) return 0
 
-  const consumedQty = Number(item?.consumed_quantity || item?.quantity) || 0
-  return calcIngredientCost(ingredient, consumedQty)
+  return calcIngredientCost(ingredient, getDiningItemConsumedQty(item))
 }
 
 function getDiningRecordHomeCost(record) {
@@ -385,6 +392,41 @@ function EditDiningModal({ record, onClose, onSaved }) {
     return Math.round((price * qty / (ing.quantity || 1)) * 10) / 10
   }
 
+  async function fetchIngredientsByIds(ids) {
+    if (ids.length === 0) return []
+    const { data } = await supabase
+      .from('ingredients')
+      .select('*')
+      .in('id', ids)
+    return data || []
+  }
+
+  async function rollbackRemovedConsumedItems(removedItems) {
+    const rollbackByIngredient = removedItems.reduce((map, item) => {
+      const key = String(item.ingredient_id)
+      map.set(key, (map.get(key) || 0) + getDiningItemConsumedQty(item))
+      return map
+    }, new Map())
+    const rollbackIngredientIds = [...rollbackByIngredient.keys()]
+    const freshIngredients = await fetchIngredientsByIds(rollbackIngredientIds)
+
+    for (const ingredient of freshIngredients) {
+      const rollbackQty = rollbackByIngredient.get(String(ingredient.id)) || 0
+      const currentConsumed = Number(ingredient.consumed_quantity) || 0
+      const newConsumed = parseFloat(Math.max(0, currentConsumed - rollbackQty).toFixed(2))
+      const totalQty = Number(ingredient.quantity) || 0
+      const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
+
+      await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
+      if (ingredient.purchase_item_id) {
+        await supabase.from('purchase_items').update({
+          consumed_quantity: newConsumed,
+          is_fully_consumed: isFullyConsumed
+        }).eq('id', ingredient.purchase_item_id)
+      }
+    }
+  }
+
   const existingIngIds = new Set(items.map(i => i.ingredient_id).filter(Boolean).map(String))
 
   async function save() {
@@ -418,9 +460,23 @@ function EditDiningModal({ record, onClose, onSaved }) {
       }
 
       if (record.dining_type === 'home') {
-        const originalItemIds = new Set((record.dining_items || []).map(i => i.id).filter(Boolean))
+        const originalItems = record.dining_items || []
         const currentItemIds = new Set(items.map(i => i.id).filter(Boolean))
-        const removedItemIds = [...originalItemIds].filter(id => !currentItemIds.has(id))
+        const removedItems = originalItems.filter(item => item.id && !currentItemIds.has(item.id))
+        const removedItemIds = removedItems.map(item => item.id)
+        const rollbackCandidates = removedItems.filter(item => item.ingredient_id && item.update_consumed && getDiningItemConsumedQty(item) > 0)
+
+        if (rollbackCandidates.length > 0) {
+          const rollbackSummary = rollbackCandidates
+            .map(item => `・${item.name_zh || '未命名食材'} ${formatDiningItemQty(item)}`)
+            .join('\n')
+          const shouldRollback = window.confirm(
+            `已删除 ${rollbackCandidates.length} 个曾同步消耗量的食材。是否将这些消耗量回退到食用品库存？\n\n${rollbackSummary}`
+          )
+          if (shouldRollback) {
+            await rollbackRemovedConsumedItems(rollbackCandidates)
+          }
+        }
 
         if (removedItemIds.length > 0) {
           await supabase.from('dining_items').delete().in('id', removedItemIds)
