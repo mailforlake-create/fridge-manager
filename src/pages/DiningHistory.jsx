@@ -250,6 +250,34 @@ function clampIngredientQty(ingredient, qty, min = 0) {
   return Math.min(limit, Math.max(min, Number(qty) || 0))
 }
 
+async function hydrateLatestPurchasePrices(ingredients) {
+  const purchaseItemIds = [...new Set((ingredients || []).map(i => i.purchase_item_id).filter(Boolean))]
+  if (!purchaseItemIds.length) return ingredients || []
+
+  const { data } = await supabase
+    .from('purchase_items')
+    .select(`
+      id,
+      price,
+      original_price,
+      purchase_history:history_id(store_name, purchased_at)
+    `)
+    .in('id', purchaseItemIds)
+
+  const purchaseItemById = new Map((data || []).map(item => [String(item.id), item]))
+  return (ingredients || []).map(ingredient => {
+    const latestPurchaseItem = purchaseItemById.get(String(ingredient.purchase_item_id))
+    if (!latestPurchaseItem) return ingredient
+    return {
+      ...ingredient,
+      purchase_item: {
+        ...(ingredient.purchase_item || {}),
+        ...latestPurchaseItem,
+      }
+    }
+  })
+}
+
 function getDiningItemConsumedQty(item) {
   return Number(item?.consumed_quantity || item?.quantity) || 0
 }
@@ -377,9 +405,15 @@ function EditDiningModal({ record, onClose, onSaved }) {
   async function fetchIngredients() {
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          purchase_history:history_id(store_name, purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients(data ||[])
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
   }
 
   function calcCost(ing, qty) {
@@ -746,9 +780,16 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
   async function fetchIngredients() {
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, original_price, purchase_history:history_id(purchased_at))`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          original_price,
+          purchase_history:history_id(purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients(data ||[])
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
   }
 
   const filtered = ingredients.filter(i =>
@@ -1033,9 +1074,15 @@ function AddDiningModal({ onClose, onSaved }) {
     setLoadingIng(true)
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          purchase_history:history_id(store_name, purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients(data ||[])
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
     setLoadingIng(false)
   }
 

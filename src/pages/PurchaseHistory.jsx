@@ -815,37 +815,46 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     if (itemsError) throw itemsError
     if (!diningItems?.length) return
 
+    const updatedContributionByItemId = new Map()
+    const diningIds = [...new Set(diningItems.map(diningItem => diningItem.dining_id).filter(Boolean))]
+
     for (const diningItem of diningItems) {
       const ingredient = ingredientById.get(String(diningItem.ingredient_id))
+      const priceContribution = calcSyncedDiningCost(diningItem, ingredient, item.price)
       const { error } = await supabase.from('dining_items').update({
         name_zh: item.name_zh,
         category: item.category,
         unit: item.unit,
         memo: item.memo || null,
-        price_contribution: calcSyncedDiningCost(diningItem, ingredient, item.price)
+        price_contribution: priceContribution
       }).eq('id', diningItem.id)
       if (error) throw error
+      updatedContributionByItemId.set(String(diningItem.id), priceContribution)
     }
 
-    const diningIds = [...new Set(diningItems.map(diningItem => diningItem.dining_id).filter(Boolean))]
     if (!diningIds.length) return
 
-    const { data: records, error: recordsError } = await supabase
-      .from('dining_history')
-      .select('id, dining_items(price_contribution)')
-      .in('id', diningIds)
+    const { data: allRecordItems, error: allRecordItemsError } = await supabase
+      .from('dining_items')
+      .select('id, dining_id, price_contribution')
+      .in('dining_id', diningIds)
 
-    if (recordsError) throw recordsError
+    if (allRecordItemsError) throw allRecordItemsError
 
-    for (const record of records || []) {
-      const homeCost = (record.dining_items || []).reduce(
-        (sum, diningItem) => sum + (Number(diningItem.price_contribution) || 0),
-        0
-      )
+    const costByDiningId = new Map(diningIds.map(diningId => [String(diningId), 0]))
+    for (const diningItem of allRecordItems || []) {
+      const diningId = String(diningItem.dining_id)
+      const contribution = updatedContributionByItemId.has(String(diningItem.id))
+        ? updatedContributionByItemId.get(String(diningItem.id))
+        : (Number(diningItem.price_contribution) || 0)
+      costByDiningId.set(diningId, (costByDiningId.get(diningId) || 0) + contribution)
+    }
+
+    for (const [diningId, homeCost] of costByDiningId.entries()) {
       const { error } = await supabase
         .from('dining_history')
         .update({ home_cost: Math.round(homeCost * 10) / 10 })
-        .eq('id', record.id)
+        .eq('id', diningId)
       if (error) throw error
     }
   }
@@ -859,7 +868,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       original_price: normalizeOptionalNumber(item.original_price),
     }
 
-    const { error: purchaseError } = await supabase.from('purchase_items').update({
+    const { data: updatedItem, error: purchaseError } = await supabase.from('purchase_items').update({
       name_zh: savedItem.name_zh,
       name_original: savedItem.name_original,
       category: savedItem.category,
@@ -871,21 +880,22 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       discount_info: savedItem.discount_info || null,
       expiry_date: savedItem.expiry_date || null,
       memo: savedItem.memo || null,
-    }).eq('id', savedItem.id)
+    }).eq('id', savedItem.id).select().single()
     if (purchaseError) {
       alert('保存购物履历失败：' + purchaseError.message)
       return
     }
+    const syncedItem = updatedItem || savedItem
 
     if (syncToIngredients) {
       const { error: ingredientError } = await supabase.from('ingredients').update({
-        name_zh: savedItem.name_zh,
-        category: savedItem.category,
-        quantity: savedItem.quantity,
-        unit: savedItem.unit,
-        expiry_date: savedItem.expiry_date || null,
-        memo: savedItem.memo || null,
-      }).eq('purchase_item_id', savedItem.id)
+        name_zh: syncedItem.name_zh,
+        category: syncedItem.category,
+        quantity: Number(syncedItem.quantity) || 1,
+        unit: syncedItem.unit,
+        expiry_date: syncedItem.expiry_date || null,
+        memo: syncedItem.memo || null,
+      }).eq('purchase_item_id', syncedItem.id)
       if (ingredientError) {
         alert('同步到物品库存失败：' + ingredientError.message)
         return
@@ -894,7 +904,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
     if (syncToDining) {
       try {
-        await syncPurchaseItemToDining(savedItem)
+        await syncPurchaseItemToDining(syncedItem)
       } catch (error) {
         alert('同步到自炊履历失败：' + error.message)
         return
@@ -902,7 +912,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     }
 
     setHistory(history.map(h => h.id === historyId
-      ? { ...h, purchase_items: h.purchase_items.map(i => i.id === savedItem.id ? savedItem : i) }
+      ? { ...h, purchase_items: h.purchase_items.map(i => i.id === syncedItem.id ? syncedItem : i) }
       : h
     ))
     setEditingItem(null)
