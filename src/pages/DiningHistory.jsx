@@ -250,6 +250,34 @@ function clampIngredientQty(ingredient, qty, min = 0) {
   return Math.min(limit, Math.max(min, Number(qty) || 0))
 }
 
+async function hydrateLatestPurchasePrices(ingredients) {
+  const purchaseItemIds = [...new Set((ingredients || []).map(i => i.purchase_item_id).filter(Boolean))]
+  if (!purchaseItemIds.length) return ingredients || []
+
+  const { data } = await supabase
+    .from('purchase_items')
+    .select(`
+      id,
+      price,
+      original_price,
+      purchase_history:history_id(store_name, purchased_at)
+    `)
+    .in('id', purchaseItemIds)
+
+  const purchaseItemById = new Map((data || []).map(item => [String(item.id), item]))
+  return (ingredients || []).map(ingredient => {
+    const latestPurchaseItem = purchaseItemById.get(String(ingredient.purchase_item_id))
+    if (!latestPurchaseItem) return ingredient
+    return {
+      ...ingredient,
+      purchase_item: {
+        ...(ingredient.purchase_item || {}),
+        ...latestPurchaseItem,
+      }
+    }
+  })
+}
+
 function getDiningItemConsumedQty(item) {
   return Number(item?.consumed_quantity || item?.quantity) || 0
 }
@@ -274,21 +302,24 @@ function calcIngredientCost(ingredient, consumedQty) {
   return Math.round((price * consumedQty / totalQty) * 10) / 10
 }
 
+function hasLivePurchasePrice(item) {
+  return Boolean(item?.ingredient?.purchase_item)
+}
+
 function getDiningItemCost(item) {
-  const savedCost = Number(item?.price_contribution) || 0
-  if (savedCost > 0) return savedCost
+  if (hasLivePurchasePrice(item)) {
+    return calcIngredientCost(item.ingredient, getDiningItemConsumedQty(item))
+  }
 
-  const ingredient = item?.ingredient
-  if (!ingredient) return 0
-
-  return calcIngredientCost(ingredient, getDiningItemConsumedQty(item))
+  return Number(item?.price_contribution) || 0
 }
 
 function getDiningRecordHomeCost(record) {
-  const savedCost = Number(record?.home_cost) || 0
-  if (savedCost > 0) return savedCost
+  const items = record?.dining_items || []
+  const itemCost = items.reduce((sum, item) => sum + getDiningItemCost(item), 0)
+  if (items.some(hasLivePurchasePrice) || itemCost > 0) return itemCost
 
-  return (record?.dining_items || []).reduce((sum, item) => sum + getDiningItemCost(item), 0)
+  return Number(record?.home_cost) || 0
 }
 
 function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, uploading, onClose, onSaveMemo }) {
@@ -374,13 +405,15 @@ function EditDiningModal({ record, onClose, onSaved }) {
   async function fetchIngredients() {
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          purchase_history:history_id(store_name, purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients((data ||[]).filter(i => {
-      const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
-      if (!purchasedAt) return true
-      return purchasedAt <= record.dined_at
-    }))
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
   }
 
   function calcCost(ing, qty) {
@@ -747,10 +780,16 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
   async function fetchIngredients() {
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, original_price, purchase_history:history_id(purchased_at))`)
-      .lte('created_at', `${dinedAt}T23:59:59`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          original_price,
+          purchase_history:history_id(purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients(data ||[])
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
   }
 
   const filtered = ingredients.filter(i =>
@@ -1035,13 +1074,15 @@ function AddDiningModal({ onClose, onSaved }) {
     setLoadingIng(true)
     const { data } = await supabase
       .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id(price, purchase_history:history_id(store_name, purchased_at))`)
+      .select(`
+        *,
+        purchase_item:purchase_item_id(
+          price,
+          purchase_history:history_id(store_name, purchased_at)
+        )
+      `)
       .order('created_at', { ascending: false })
-    setIngredients((data ||[]).filter(i => {
-      const purchasedAt = i.purchase_item?.purchase_history?.purchased_at
-      if (!purchasedAt) return true
-      return purchasedAt <= dinedAt
-    }))
+    setIngredients(await hydrateLatestPurchasePrices(data || []))
     setLoadingIng(false)
   }
 
@@ -1689,7 +1730,7 @@ export default function DiningHistory() {
           {Object.entries(groupedByYear).map(([year, months]) => {
             const yearRecords = Object.values(months).flatMap(m => Object.values(m).flat())
             const yearOutTotal = yearRecords.filter(r => r.dining_type === 'out').reduce((s, r) => s + (r.amount || 0), 0)
-            const yearHomeTotal = yearRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + (r.home_cost || 0), 0)
+            const yearHomeTotal = yearRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + getDiningRecordHomeCost(r), 0)
             const isYearCollapsed = collapsedYears[year]
 
             return (
@@ -1712,7 +1753,7 @@ export default function DiningHistory() {
                     {Object.entries(months).map(([month, days]) => {
                       const monthRecords = Object.values(days).flat()
                       const monthOutTotal = monthRecords.filter(r => r.dining_type === 'out').reduce((s, r) => s + (r.amount || 0), 0)
-                      const monthHomeTotal = monthRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + (r.home_cost || 0), 0)
+                      const monthHomeTotal = monthRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + getDiningRecordHomeCost(r), 0)
                       const monthKey = `${year}-${month}`
                       const isMonthCollapsed = collapsedMonths[monthKey]
 
