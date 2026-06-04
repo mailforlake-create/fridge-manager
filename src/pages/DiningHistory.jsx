@@ -748,7 +748,6 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
     const { data } = await supabase
       .from('ingredients')
       .select(`*, purchase_item:purchase_item_id(price, original_price, purchase_history:history_id(purchased_at))`)
-      .lte('created_at', `${dinedAt}T23:59:59`)
       .order('created_at', { ascending: false })
     setIngredients(data ||[])
   }

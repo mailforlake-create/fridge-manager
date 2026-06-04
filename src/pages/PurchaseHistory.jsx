@@ -782,6 +782,62 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     saveItemEdit(editingItem.historyId, item)
   }
 
+  function calcSyncedDiningCost(diningItem, ingredient, price) {
+    const itemPrice = Number(price) || 0
+    const consumedQty = Number(diningItem.consumed_quantity || diningItem.quantity) || 0
+    const totalQty = Number(ingredient?.quantity) || 1
+    if (!itemPrice || !consumedQty) return 0
+    return Math.round((itemPrice * consumedQty / totalQty) * 10) / 10
+  }
+
+  async function syncPurchaseItemToDining(item) {
+    const { data: ingredients } = await supabase
+      .from('ingredients')
+      .select('id, quantity')
+      .eq('purchase_item_id', item.id)
+
+    if (!ingredients?.length) return
+
+    const ingredientById = new Map(ingredients.map(ingredient => [String(ingredient.id), ingredient]))
+    const ingredientIds = ingredients.map(ingredient => ingredient.id)
+    const { data: diningItems } = await supabase
+      .from('dining_items')
+      .select('id, dining_id, ingredient_id, quantity, consumed_quantity')
+      .in('ingredient_id', ingredientIds)
+
+    if (!diningItems?.length) return
+
+    for (const diningItem of diningItems) {
+      const ingredient = ingredientById.get(String(diningItem.ingredient_id))
+      await supabase.from('dining_items').update({
+        name_zh: item.name_zh,
+        category: item.category,
+        unit: item.unit,
+        memo: item.memo || null,
+        price_contribution: calcSyncedDiningCost(diningItem, ingredient, item.price)
+      }).eq('id', diningItem.id)
+    }
+
+    const diningIds = [...new Set(diningItems.map(diningItem => diningItem.dining_id).filter(Boolean))]
+    if (!diningIds.length) return
+
+    const { data: records } = await supabase
+      .from('dining_history')
+      .select('id, dining_items(price_contribution)')
+      .in('id', diningIds)
+
+    for (const record of records || []) {
+      const homeCost = (record.dining_items || []).reduce(
+        (sum, diningItem) => sum + (Number(diningItem.price_contribution) || 0),
+        0
+      )
+      await supabase
+        .from('dining_history')
+        .update({ home_cost: Math.round(homeCost * 10) / 10 })
+        .eq('id', record.id)
+    }
+  }
+
   async function saveItemEdit(historyId, item) {
     setConfirm(null)
     await supabase.from('purchase_items').update({
@@ -810,20 +866,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     }
 
     if (syncToDining) {
-      const { data: ings } = await supabase
-        .from('ingredients')
-        .select('id')
-        .eq('purchase_item_id', item.id)
-      if (ings?.length) {
-        for (const ing of ings) {
-          await supabase.from('dining_items').update({
-            name_zh: item.name_zh,
-            category: item.category,
-            unit: item.unit,
-            memo: item.memo || null,
-          }).eq('ingredient_id', ing.id)
-        }
-      }
+      await syncPurchaseItemToDining(item)
     }
 
     setHistory(history.map(h => h.id === historyId
