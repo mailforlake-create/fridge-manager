@@ -353,7 +353,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
   const [items, setItems] = useState(
     (record.dining_items ||[]).map(i => ({ ...i, price: i.price || '', qty_edit: i.consumed_quantity || i.quantity || 1 }))
   )
-  const [stepCheckedItems, setStepCheckedItems] = useState({})
+  const [activeEditItemIndex, setActiveEditItemIndex] = useState(items.length ? 0 : null)
   const[saving, setSaving] = useState(false)
   const[showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
@@ -364,12 +364,10 @@ function EditDiningModal({ record, onClose, onSaved }) {
   },[record.dining_type, record.dined_at])
 
   useEffect(() => {
-    setStepCheckedItems(prev => {
-      const next = {}
-      items.forEach((_, index) => {
-        next[index] = Object.prototype.hasOwnProperty.call(prev, index) ? prev[index] : true
-      })
-      return next
+    setActiveEditItemIndex(currentIndex => {
+      if (items.length === 0) return null
+      if (currentIndex === null || currentIndex >= items.length) return 0
+      return currentIndex
     })
   }, [items.length])
 
@@ -617,41 +615,54 @@ function EditDiningModal({ record, onClose, onSaved }) {
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>已选食材</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
-                {QUICK_STEPS.map(step => (
-                  <button key={step} onClick={() => {
-                    setActiveQtyStep(step)
-                    setItems(currentItems => currentItems.map((item, index) => {
-                      if (!stepCheckedItems[index]) return item
-                      const maxQty = Number(item.quantity) || Number(item.qty_edit) || 0
-                      return { ...item, qty_edit: Math.min(maxQty, step) }
-                    }))
-                  }} disabled={items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step)}
-                    style={{
-                      padding: '3px 8px',
-                      borderRadius: 999,
-                      fontSize: 12,
-                      border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
-                      background: items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step) ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
-                      color: items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step) ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
-                      cursor: items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step) ? 'not-allowed' : 'pointer',
-                      opacity: items.every(item => (Number(item.quantity) || Number(item.qty_edit) || 0) < step) ? 0.7 : 1
-                    }}>
-                    {step}
-                  </button>
-                ))}
+                {QUICK_STEPS.map(step => {
+                  const activeItem = activeEditItemIndex !== null ? items[activeEditItemIndex] : null
+                  const maxQty = activeItem ? Number(activeItem.quantity) || Number(activeItem.qty_edit) || 0 : 0
+                  const disabled = !activeItem || maxQty < step
+                  return (
+                    <button key={step} onClick={() => {
+                      setActiveQtyStep(step)
+                      if (activeEditItemIndex === null) return
+                      setItems(currentItems => currentItems.map((item, index) => {
+                        if (index !== activeEditItemIndex) return item
+                        const itemMaxQty = Number(item.quantity) || Number(item.qty_edit) || 0
+                        return { ...item, qty_edit: Math.min(itemMaxQty, step) }
+                      }))
+                    }} disabled={disabled}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        border: `1px solid ${activeQtyStep === step ? '#16a34a' : '#cbd5e1'}`,
+                        background: disabled ? '#f1f5f9' : (activeQtyStep === step ? '#dcfce7' : '#fff'),
+                        color: disabled ? '#94a3b8' : (activeQtyStep === step ? '#166534' : '#475569'),
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.7 : 1
+                      }}>
+                      {step}
+                    </button>
+                  )
+                })}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {items.map((item, i) => (
-                  <div key={i} style={{ background: '#f0fdf4', borderRadius: 9, padding: '8px 11px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={stepCheckedItems[i] ?? true}
-                      onChange={e => setStepCheckedItems(s => ({ ...s, [i]: e.target.checked }))}
-                      style={{ width: 15, height: 15, accentColor: '#16a34a', cursor: 'pointer' }}
-                      title="勾选后快捷步长会影响该食材"
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{item.name_zh}</div>
+                {items.map((item, i) => {
+                  const isActiveStepItem = activeEditItemIndex === i
+                  return (
+                    <div key={i} onClick={() => setActiveEditItemIndex(i)} style={{
+                      background: '#f0fdf4',
+                      border: `1.5px solid ${isActiveStepItem ? '#16a34a' : 'transparent'}`,
+                      borderRadius: 9,
+                      padding: '8px 11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{item.name_zh}</div>
+                        <div style={{ fontSize: 11, color: isActiveStepItem ? '#16a34a' : '#94a3b8' }}>
+                          {isActiveStepItem ? '当前步长应用对象' : '点击此食材设为步长应用对象'}
+                        </div>
                       {item.price_contribution > 0 && (
                         <div style={{ fontSize: 11, color: '#16a34a' }}>成本 ¥{item.price_contribution}</div>
                       )}
@@ -663,10 +674,13 @@ function EditDiningModal({ record, onClose, onSaved }) {
                       <button onClick={() => setItems(currentItems => { const n=[...currentItems]; const maxQty = Number(n[i].quantity) || Number(n[i].qty_edit) || 0; n[i]={...n[i],qty_edit:Math.min(maxQty, parseFloat(((n[i].qty_edit||1)+activeQtyStep).toFixed(2)))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
-                    <button onClick={() => setItems(currentItems => currentItems.filter((_, j) => j !== i))}
-                      style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
-                  </div>
-                ))}
+                      <button onClick={e => {
+                        e.stopPropagation()
+                        setItems(currentItems => currentItems.filter((_, j) => j !== i))
+                      }} style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
+                    </div>
+                  )
+                })}
               </div>
 
               <button onClick={() => setShowAddMore(!showAddMore)} style={{
