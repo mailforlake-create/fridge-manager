@@ -79,7 +79,7 @@ export async function recognizeReceipt(file, categories = {}) {
     ...(categories.daily_units || DAILY_UNITS)
   ])].join('/')
   
-  const prompt = `你是专业购物小票识别助手。仔细阅读这张小票图片，识别所有商品信息。
+  const prompt = `你是专业的购物小票识别助手。仔细阅读这张小票图片，识别所有商品信息。
 
 输出以下JSON格式（只输出JSON，不要任何说明）：
 {
@@ -94,17 +94,24 @@ export async function recognizeReceipt(file, categories = {}) {
       "category": "从以下选择：${foodCats}/${dailyCats}/其他",
       "quantity": 数量数字,
       "unit": "从以下选择：${allUnits}",
-      "price": 实付单价数字或null,
-      "original_price": 原价数字或null,
+      "price": 该商品实付总价数字或null,
+      "original_price": 原价总价数字或null,
       "is_discount": true或false,
       "discount_info": "折扣说明或空字符串"
     }
   ]
 }
 
-规则：
+价格规则（重要）：
+- price 取该商品的【实付总价】，即单价×数量的结果
+- 小票上通常显示格式为：单价 × 数量 = 总价，price 取最右边的总价数值
+- 例如：158円 × 2 = 316円，则 price=316，quantity=2
+- 若只有单价没有数量，则 price=单价，quantity=1
+- original_price 同样取原价总价
+
+其他规则：
 - items必须包含小票上每一件商品，绝对不能遗漏
-- 折扣行合并到上一件商品的discount_info，不单独列出
+- 折扣行（割引/値引/セール等）合并到上一件商品的discount_info，不单独列出
 - 合计/小计/税额行不列入items
 - 商品名直接翻译成中文，保留原文在name_original`
 
