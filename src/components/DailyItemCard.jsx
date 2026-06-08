@@ -174,7 +174,9 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
               background: '#f1f5f9', padding: '2px 8px', borderRadius: 99
             }}>已使用</span>
           )}
-          <button onClick={() => onDelete(item.id)} style={{
+          <button onClick={() => {
+            if (window.confirm(`确认删除「${item.name_zh}」？`)) onDelete(item.id)
+          }} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
           }}>×</button>
         </div>

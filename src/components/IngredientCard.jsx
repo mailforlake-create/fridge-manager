@@ -461,8 +461,10 @@ async function saveEdit() {
               </span>
             </div>
           ) : null}
-          <button onClick={() => onDelete(item.id)} style={{
-            fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1, marginTop: 4
+          <button onClick={() => {
+            if (window.confirm(`确认删除「${item.name_zh}」？`)) onDelete(item.id)
+          }} style={{
+            fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
           }}>×</button>
         </div>
       </div>
