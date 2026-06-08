@@ -66,6 +66,8 @@ function ItemDetailModal({ item, onClose }) {
   )
 }
 
+
+
 function ReceiptScanModal({ onClose, onSaved }) {
   const [aiItems, setAiItems] = useState([])
   const [selected, setSelected] = useState({})
@@ -666,6 +668,43 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       onNo: () => deleteHistory(h, false),
       onCancel: () => setConfirm(null)
     })
+  }
+
+
+    async function restockItem(item) {
+    if (!item.add_to_fridge) {
+      alert('该商品未标记为入库')
+      return
+    }
+
+    const isDaily = isDailyCategory(item.category)
+
+    if (isDaily) {
+      await supabase.from('daily_items').insert({
+        name_zh: item.name_zh,
+        name_original: item.name_original || null,
+        category: item.category || null,
+        quantity: Number(item.quantity) || 1,
+        unit: item.unit || '个',
+        memo: item.memo || null,
+        location: 'home',
+        purchase_item_id: item.id
+      })
+    } else {
+      await supabase.from('ingredients').insert({
+        name_zh: item.name_zh,
+        name_original: item.name_original || null,
+        category: item.category || null,
+        quantity: Number(item.quantity) || 1,
+        unit: item.unit || '个',
+        expiry_date: item.expiry_date || null,
+        memo: item.memo || null,
+        location: 'fridge',
+        purchase_item_id: item.id
+      })
+    }
+
+    alert(`已重新入库到${isDaily ? '非食用品' : '食用品'}`)
   }
 
   async function deleteHistory(h, alsoFridge) {
@@ -1362,6 +1401,21 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                     background: '#16a34a', color: '#fff', fontSize: 14, fontWeight: 700
                   }}>保存</button>
                 </div>
+                {/* 重新入库按钮 */}
+                {editingItem.item.add_to_fridge && (
+                  <button onClick={async () => {
+                    await restockItem(editingItem.item)
+                    setEditingItem(null)
+                  }} style={{
+                    width: '100%', marginTop: 8, padding: '11px 0', borderRadius: 10,
+                    background: isDailyCategory(editingItem.item.category) ? '#eff6ff' : '#f0fdf4',
+                    color: isDailyCategory(editingItem.item.category) ? '#3b82f6' : '#16a34a',
+                    fontSize: 14, fontWeight: 600,
+                    border: `1.5px solid ${isDailyCategory(editingItem.item.category) ? '#bfdbfe' : '#bbf7d0'}`
+                  }}>
+                    🔄 重新入库到{isDailyCategory(editingItem.item.category) ? '非食用品' : '食用品'}
+                  </button>
+                )}
               </div>
             </div>
           )}

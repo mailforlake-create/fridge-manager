@@ -78,42 +78,24 @@ export async function recognizeReceipt(file, categories = {}) {
     ...(categories.food_units || UNITS),
     ...(categories.daily_units || DAILY_UNITS)
   ])].join('/')
-  
-  const prompt = `你是专业的购物小票识别助手。仔细阅读这张小票图片，识别所有商品信息。
 
-输出以下JSON格式（只输出JSON，不要任何说明）：
+  const prompt = `识别这张购物小票，输出JSON，只输出JSON不要说明：
 {
-  "store_name": "商家中文名",
-  "store_name_original": "商家原文名",
-  "purchased_at": "YYYY-MM-DD或空字符串",
+  "store_name": "店名中文",
+  "store_name_original": "店名原文", 
+  "purchased_at": "YYYY-MM-DD或空",
   "total_amount": 合计金额数字或null,
-  "items": [
-    {
-      "name_zh": "商品中文名",
-      "name_original": "商品原文名（完整保留）",
-      "category": "从以下选择：${foodCats}/${dailyCats}/其他",
-      "quantity": 数量数字,
-      "unit": "从以下选择：${allUnits}",
-      "price": 该商品实付总价数字或null,
-      "original_price": 原价总价数字或null,
-      "is_discount": true或false,
-      "discount_info": "折扣说明或空字符串"
-    }
-  ]
+  "total_item_count": 小票上显示的总件数数字（如小票写"9点"或"合计9件"则填9，复数件商品按实际件数累计），
+  "items": [{"name_zh":"中文名","name_original":"原文完整保留","category":"${foodCats}/${dailyCats}/其他","quantity":购买件数,"unit":"${allUnits}","price":总价或null,"original_price":原价总价或null,"is_discount":false,"discount_info":""}]
 }
 
-价格规则（重要）：
-- price 取该商品的【实付总价】，即单价×数量的结果
-- 小票上通常显示格式为：单价 × 数量 = 总价，price 取最右边的总价数值
-- 例如：158円 × 2 = 316円，则 price=316，quantity=2
-- 若只有单价没有数量，则 price=单价，quantity=1
-- original_price 同样取原价总价
-
-其他规则：
-- items必须包含小票上每一件商品，绝对不能遗漏
-- 折扣行（割引/値引/セール等）合并到上一件商品的discount_info，不单独列出
-- 合计/小计/税额行不列入items
-- 商品名直接翻译成中文，保留原文在name_original`
+重要规则：
+1. 先找小票上的总件数（点数/品数/合計点数等字样），填入total_item_count
+2. items中所有quantity之和必须等于total_item_count，如果不等说明有遗漏，必须补全
+3. 逐行扫描小票，每一行商品都要列入items，绝不跳过
+4. price取总价：如"158×2=316"取316；quantity=2
+5. 折扣行(割引/値引)合并到上一件discount_info，不单独列出
+6. 合计/小計/税額/お釣り等非商品行不列入items`
 
  const text = await callAI([{
   role: 'user',
@@ -167,6 +149,12 @@ export async function recognizeReceipt(file, categories = {}) {
   }
 
   if (!result?.items?.length) return null
+  if (result?.items?.length) {
+  const totalQty = result.items.reduce((sum, i) => sum + (Number(i.quantity) || 1), 0)
+  if (result.total_item_count && totalQty < result.total_item_count) {
+    console.warn(`识别不完整：小票总件数${result.total_item_count}，实际识别${totalQty}件`)
+  }
+}
 
   return {
     store_name: result.store_name || '未知商家',
