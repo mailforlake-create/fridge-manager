@@ -85,16 +85,21 @@ export async function recognizeReceipt(file, categories = {}) {
   "store_name_original": "店名原文", 
   "purchased_at": "YYYY-MM-DD或空",
   "total_amount": 合计金额数字或null,
-  "total_item_count": 小票上显示的总件数数字（如小票写"9点"或"合计9件"则填9，复数件商品按实际件数累计），
-  "items": [{"name_zh":"中文名","name_original":"原文完整保留","category":"${foodCats}/${dailyCats}/其他","quantity":购买件数,"unit":"${allUnits}","price":总价或null,"original_price":原价总价或null,"is_discount":false,"discount_info":""}]
+  "total_item_count": 小票上显示的总件数数字,
+  "items": [{"name_zh":"中文名","name_original":"原文完整保留","category":"${foodCats}/${dailyCats}/其他","quantity":购买件数,"unit":"${allUnits}","price":实付总价或null,"original_price":原价总价或null,"is_discount":false,"discount_info":""}]
 }
 
-重要规则：
-1. 先找小票上的总件数（点数/品数/合計点数等字样），填入total_item_count
-2. items中所有quantity之和必须等于total_item_count，如果不等说明有遗漏，必须补全
+规则：
+1. 先找小票上的总件数（点数/品数/合計点数等），填入total_item_count
+2. items中所有quantity之和必须等于total_item_count，不等说明有遗漏必须补全
 3. 逐行扫描小票，每一行商品都要列入items，绝不跳过
-4. price取总价：如"158×2=316"取316；quantity=2
-5. 折扣行(割引/値引)合并到上一件discount_info，不单独列出
+4. 数量规则：如"158×2=316"，quantity=2，price=316
+5. 折扣价格规则（重要）：
+   - 当某行商品下方紧跟着折扣行（割引/値引/セール/ポイント等，通常为负数金额）时
+   - 该商品的 original_price = 商品行显示的价格（原价）
+   - 该商品的 price = 商品行价格 + 折扣行价格（折扣为负数，相加得实付价）
+   - 例如：商品498円，下行「割引 -100円」，则 original_price=498，price=398，is_discount=true，discount_info="割引-100円"
+   - 折扣行本身不单独列入items
 6. 合计/小計/税額/お釣り等非商品行不列入items`
 
  const text = await callAI([{
