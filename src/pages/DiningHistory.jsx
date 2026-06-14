@@ -513,6 +513,52 @@ function EditDiningModal({ record, onClose, onSaved }) {
           await supabase.from('dining_items').delete().in('id', removedItemIds)
         }
 
+        // ---- 检查消耗量变化，弹窗确认是否同步库存 ----
+        const qtyChangedItems = items
+          .filter(item => item.ingredient_id)
+          .map(item => {
+            const original = originalItems.find(o => o.id === item.id)
+            if (!original) return null
+            if (!original.update_consumed) return null
+            const oldQty = getDiningItemConsumedQty(original)
+            const newQty = Number(item.qty_edit) || getDiningItemConsumedQty(item)
+            const delta = parseFloat((newQty - oldQty).toFixed(2))
+            if (Math.abs(delta) < 0.001) return null
+            return { item, original, oldQty, newQty, delta }
+          })
+          .filter(Boolean)
+
+        if (qtyChangedItems.length > 0) {
+          const qtyChangeSummary = qtyChangedItems
+            .map(({ item, oldQty, newQty, delta }) => {
+              const action = delta > 0 ? '增加' : '减少'
+              return `・${item.name_zh}：${oldQty} → ${newQty}（${action} ${Math.abs(delta)}${item.unit}）`
+            })
+            .join('\n')
+          const shouldSyncQty = window.confirm(
+            `以下食材消耗量已调整，是否同步更新食用品库存？\n\n${qtyChangeSummary}`
+          )
+          if (shouldSyncQty) {
+            for (const { item, delta } of qtyChangedItems) {
+              const ingredient = findIngredientById(ingredients, item.ingredient_id)
+              if (ingredient) {
+                const currentConsumed = Number(ingredient.consumed_quantity) || 0
+                const newConsumed = parseFloat(Math.max(0, currentConsumed + delta).toFixed(2))
+                const totalQty = Number(ingredient.quantity) || 0
+                const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
+                await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
+                if (ingredient.purchase_item_id) {
+                  await supabase.from('purchase_items').update({
+                    consumed_quantity: newConsumed,
+                    is_fully_consumed: isFullyConsumed
+                  }).eq('id', ingredient.purchase_item_id)
+                }
+              }
+            }
+          }
+        }
+        // ---- 消耗量变化处理结束 ----
+
         for (const item of items) {
           if (item.id) {
             await supabase.from('dining_items').update({
