@@ -74,6 +74,10 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [receiptData, setReceiptData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [storeName, setStoreName] = useState('')
+  const [storeNameOriginal, setStoreNameOriginal] = useState('')
+  const [purchasedAt, setPurchasedAt] = useState('')
+  const [totalAmount, setTotalAmount] = useState('')
   const { settings } = useSettings()
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
@@ -97,6 +101,10 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       const data = await recognizeReceipt(file)
       if (data && data.items) {
         setReceiptData(data)
+        setStoreName(data.store_name || '')
+        setStoreNameOriginal(data.store_name_original || '')
+        setPurchasedAt(data.purchased_at || '')
+        setTotalAmount(data.total_amount != null ? String(data.total_amount) : '')
         const items = data.items.map(i => ({ ...i, mfg_date: '', shelf_days: '', memo: '' }))
         setAiItems(items)
         const sel = {}
@@ -115,10 +123,10 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       const { data: history } = await supabase
         .from('purchase_history')
         .insert({
-          store_name: receiptData.store_name || '未知商家',
-          store_name_original: receiptData.store_name_original || null,
-          purchased_at: receiptData.purchased_at || null,
-          total_amount: receiptData.total_amount || null
+          store_name: storeName || '未知商家',
+          store_name_original: storeNameOriginal || null,
+          purchased_at: purchasedAt || null,
+          total_amount: totalAmount !== '' ? Number(totalAmount) : null
         }).select().single()
 
       if (history) {
@@ -225,10 +233,25 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
         {!loading && receiptData && (
           <div>
             <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: '#16a34a' }}>{receiptData.store_name || '未知商家'}</div>
-              <div style={{ color: '#64748b', marginTop: 2 }}>
-                {receiptData.purchased_at && `购买日期：${receiptData.purchased_at}　`}
-                {receiptData.total_amount && `合计：¥${receiptData.total_amount}`}
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>商家名称</div>
+              <input style={{ ...smallField, marginBottom: 6, fontWeight: 600, color: '#16a34a', fontSize: 14 }}
+                value={storeName} onChange={e => setStoreName(e.target.value)}
+                placeholder="商家名称" />
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>商家原文名称</div>
+              <input style={{ ...smallField, marginBottom: 6 }}
+                value={storeNameOriginal} onChange={e => setStoreNameOriginal(e.target.value)}
+                placeholder="商家原文名称（可选）" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>购买日期</div>
+                  <input style={smallField} type="date" value={purchasedAt}
+                    onChange={e => setPurchasedAt(e.target.value)} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>合计金额（¥）</div>
+                  <input style={smallField} type="number" value={totalAmount}
+                    onChange={e => setTotalAmount(e.target.value)} placeholder="可选" />
+                </div>
               </div>
             </div>
 
@@ -309,7 +332,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setReceiptData(null); setAiItems([]); setSelected({}) }} style={{
+              <button onClick={() => { setReceiptData(null); setAiItems([]); setSelected({}); setStoreName(''); setStoreNameOriginal(''); setPurchasedAt(''); setTotalAmount('') }} style={{
                 flex: 1, padding: '12px 0', borderRadius: 12, background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
               }}>重新识别</button>
               <button onClick={save} disabled={saving} style={{

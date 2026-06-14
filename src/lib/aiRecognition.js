@@ -17,7 +17,7 @@ export async function callAI(messages, aiConfig = {}) {
     },
     body: JSON.stringify({
       model_url: modelUrl,
-      max_tokens: Number(aiConfig.ai_max_tokens) || 4096,
+      max_tokens: Number(aiConfig.ai_max_tokens) || 16384,
       messages
     })
   })
@@ -100,7 +100,11 @@ export async function recognizeReceipt(file, categories = {}) {
    - 该商品的 price = 商品行价格 + 折扣行价格（折扣为负数，相加得实付价）
    - 例如：商品498円，下行「割引 -100円」，则 original_price=498，price=398，is_discount=true，discount_info="割引-100円"
    - 折扣行本身不单独列入items
-6. 合计/小計/税額/お釣り等非商品行不列入items`
+6. 括号说明行规则（重要）：
+   - 折扣行下方如有括号开头的说明行，如「（5点 1回 - 210）」「（会員割引）」等
+   - 这类括号行只是对上一行折扣的补充说明，直接跳过，不做任何处理
+   - 不影响价格计算，不列入items，不修改discount_info
+7. 合计/小計/税額/お釣り等非商品行不列入items`
 
  const text = await callAI([{
   role: 'user',
@@ -108,7 +112,7 @@ export async function recognizeReceipt(file, categories = {}) {
     { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
     { type: 'text', text: prompt }
   ]
-}], { ...categories, ai_max_tokens: 8192 })  // ← 小票识别用更大的 token 限制
+}], { ...categories, ai_max_tokens: 16384 })  // ← 小票识别用更大的 token 限制
 
   let result = null
   try {
