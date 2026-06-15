@@ -119,18 +119,22 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   async function save() {
     setSaving(true)
+    const failedItems = []
     try {
       const { data: history } = await supabase
         .from('purchase_history')
         .insert({
-          store_name: storeName || '未知商家',
-          store_name_original: storeNameOriginal || null,
-          purchased_at: purchasedAt || null,
-          total_amount: totalAmount !== '' ? Number(totalAmount) : null
+          store_name: receiptData.store_name || '未知商家',
+          store_name_original: receiptData.store_name_original || null,
+          purchased_at: receiptData.purchased_at || null,
+          total_amount: receiptData.total_amount || null
         }).select().single()
 
       if (history) {
-        const historyItems = aiItems.map((item, i) => ({
+        // 给每个 item 加临时 id，用于后续可靠映射
+        const itemsWithTempId = aiItems.map((item, i) => ({ ...item, _tempId: i }))
+
+        const historyItems = itemsWithTempId.map(item => ({
           history_id: history.id,
           name_zh: item.name_zh,
           name_original: item.name_original || null,
@@ -141,58 +145,99 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           original_price: item.original_price || null,
           is_discount: item.is_discount || false,
           discount_info: item.discount_info || null,
-          add_to_fridge: selected[i] && !isDailyCategory(item.category) && item.category !== '非食材',
+          add_to_fridge: selected[item._tempId] && !isDailyCategory(item.category) && item.category !== '非食材',
           expiry_date: item.expiry_date || null,
           memo: item.memo || null,
         }))
 
         const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
 
+        // 使用 name_zh + history_id 进行映射，避免数组索引错位
         const purchaseItemMap = {}
-        aiItems.forEach((item, i) => {
-          const savedItem = savedItems?.[i]
-          if (savedItem) purchaseItemMap[i] = savedItem.id
+        savedItems?.forEach(saved => {
+          const original = historyItems.find(h =>
+            h.name_zh === saved.name_zh && h.history_id === saved.history_id
+          )
+          if (original) {
+            // 反查 _tempId：从 itemsWithTempId 中找到匹配的
+            const matched = itemsWithTempId.find(item =>
+              item.name_zh === saved.name_zh && item._tempId !== undefined
+            )
+            if (matched) purchaseItemMap[matched._tempId] = saved.id
+          }
         })
 
-        const fridgeItems = aiItems
-          .map((item, i) => ({ item, i }))
-          .filter(({ item, i }) => selected[i] && !isDailyCategory(item.category) && item.category !== '非食材')
+        // 逐条插入食用品库存，失败时标记并记录
+        const fridgeItems = itemsWithTempId
+          .filter((item, i) => selected[item._tempId] && !isDailyCategory(item.category) && item.category !== '非食材')
 
-        for (const { item, i } of fridgeItems) {
-          await supabase.from('ingredients').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            expiry_date: item.expiry_date || null,
-            memo: item.memo || null,
-            location: 'fridge',
-            purchase_item_id: purchaseItemMap[i] || null
-          })
+        for (const item of fridgeItems) {
+          const tid = item._tempId
+          try {
+            await supabase.from('ingredients').insert({
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              expiry_date: item.expiry_date || null,
+              memo: item.memo || null,
+              location: 'fridge',
+              purchase_item_id: purchaseItemMap[tid] || null
+            })
+          } catch (e) {
+            failedItems.push({ name: item.name_zh, error: e.message, type: '食用品' })
+            if (purchaseItemMap[tid]) {
+              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+              const oldMemo = existing?.data?.memo || ''
+              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+              await supabase.from('purchase_items')
+                .update({ add_to_fridge: false, memo: newMemo })
+                .eq('id', purchaseItemMap[tid])
+            }
+          }
         }
 
-        const dailyItems = aiItems
-          .map((item, i) => ({ item, i }))
-          .filter(({ item, i }) => selected[i] && isDailyCategory(item.category))
+        // 逐条插入非食用品库存，失败时标记并记录
+        const dailyItems = itemsWithTempId
+          .filter((item) => selected[item._tempId] && isDailyCategory(item.category))
 
-        for (const { item, i } of dailyItems) {
-          await supabase.from('daily_items').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            location: 'home',
-            memo: item.memo || null,
-            purchase_item_id: purchaseItemMap[i] || null
-          })
-          if (purchaseItemMap[i]) {
-            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[i])
+        for (const item of dailyItems) {
+          const tid = item._tempId
+          try {
+            await supabase.from('daily_items').insert({
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              location: 'home',
+              memo: item.memo || null,
+              purchase_item_id: purchaseItemMap[tid] || null
+            })
+            // 入库成功，确保 purchase_item 的 add_to_fridge 为 true
+            if (purchaseItemMap[tid]) {
+              await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[tid])
+            }
+          } catch (e) {
+            failedItems.push({ name: item.name_zh, error: e.message, type: '非食用品' })
+            if (purchaseItemMap[tid]) {
+              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+              const oldMemo = existing?.data?.memo || ''
+              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+              await supabase.from('purchase_items')
+                .update({ add_to_fridge: false, memo: newMemo })
+                .eq('id', purchaseItemMap[tid])
+            }
           }
         }
       }
-      onSaved()
+      if (failedItems.length > 0) {
+        const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
+        alert(`以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`)
+      } else {
+        onSaved()
+      }
       onClose()
     } catch (e) {
       alert('保存失败：' + e.message)
@@ -397,6 +442,7 @@ function ManualReceiptModal({ onClose, onSaved }) {
     if (validItems.length === 0) return alert('请至少添加一件商品')
 
     setSaving(true)
+    const failedItems = []
     try {
       const { data: history, error: historyError } = await supabase
         .from('purchase_history')
@@ -410,7 +456,10 @@ function ManualReceiptModal({ onClose, onSaved }) {
 
       if (historyError) { console.error('履历保存失败：', historyError); alert('保存失败：' + historyError.message); setSaving(false); return }
 
-      const historyItems = validItems.map(item => ({
+      // 给每个 item 加临时 id
+      const itemsWithTempId = validItems.map((item, i) => ({ ...item, _tempId: i }))
+
+      const historyItems = itemsWithTempId.map(item => ({
         history_id: history.id,
         name_zh: item.name_zh,
         name_original: item.name_original || null,
@@ -433,49 +482,83 @@ function ManualReceiptModal({ onClose, onSaved }) {
 
       if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
 
+      // 使用 name_zh + history_id 进行映射，避免数组索引错位
       const purchaseItemMap = {}
-      validItems.forEach((item, i) => {
-        const savedItem = savedItems?.[i]
-        if (savedItem) purchaseItemMap[i] = savedItem.id
+      savedItems?.forEach(saved => {
+        const matched = itemsWithTempId.find(item =>
+          item.name_zh === saved.name_zh && item._tempId !== undefined
+        )
+        if (matched) purchaseItemMap[matched._tempId] = saved.id
       })
 
-      const foodItems = validItems.map((item, i) => ({ item, i }))
+      // 逐条插入食用品库存，失败时标记并记录
+      const foodItems = itemsWithTempId
         .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
-      for (const { item, i } of foodItems) {
-        await supabase.from('ingredients').insert({
-          name_zh: item.name_zh,
-          name_original: item.name_original || null,
-          category: item.category || null,
-          quantity: Number(item.quantity) || 1,
-          unit: item.unit || '个',
-          expiry_date: item.expiry_date || null,
-          memo: item.memo || null,
-          location: 'fridge',
-          purchase_item_id: purchaseItemMap[i] || null
-        })
-      }
-
-      const dailyItems = validItems.map((item, i) => ({ item, i }))
-        .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
-      for (const { item, i } of dailyItems) {
-        const savedItemId = purchaseItemMap[i] || null
-        await supabase.from('daily_items').insert({
-          name_zh: item.name_zh,
-          name_original: item.name_original || null,
-          category: item.category || null,
-          quantity: Number(item.quantity) || 1,
-          unit: item.unit || '个',
-          memo: item.memo || null,
-          location: 'home',
-          purchase_item_id: savedItemId
-        })
-        if (savedItemId) {
-          await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
+      for (const item of foodItems) {
+        const tid = item._tempId
+        try {
+          await supabase.from('ingredients').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            expiry_date: item.expiry_date || null,
+            memo: item.memo || null,
+            location: 'fridge',
+            purchase_item_id: purchaseItemMap[tid] || null
+          })
+        } catch (e) {
+          failedItems.push({ name: item.name_zh, error: e.message, type: '食用品' })
+          if (purchaseItemMap[tid]) {
+            const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+            const oldMemo = existing?.data?.memo || ''
+            const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+            await supabase.from('purchase_items')
+              .update({ add_to_fridge: false, memo: newMemo })
+              .eq('id', purchaseItemMap[tid])
+          }
         }
       }
 
-      console.log('保存成功')
-      onSaved()
+      // 逐条插入非食用品库存，失败时标记并记录
+      const dailyItems = itemsWithTempId
+        .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
+      for (const item of dailyItems) {
+        const tid = item._tempId
+        try {
+          await supabase.from('daily_items').insert({
+            name_zh: item.name_zh,
+            name_original: item.name_original || null,
+            category: item.category || null,
+            quantity: Number(item.quantity) || 1,
+            unit: item.unit || '个',
+            memo: item.memo || null,
+            location: 'home',
+            purchase_item_id: purchaseItemMap[tid] || null
+          })
+          if (purchaseItemMap[tid]) {
+            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[tid])
+          }
+        } catch (e) {
+          failedItems.push({ name: item.name_zh, error: e.message, type: '非食用品' })
+          if (purchaseItemMap[tid]) {
+            const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+            const oldMemo = existing?.data?.memo || ''
+            const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+            await supabase.from('purchase_items')
+              .update({ add_to_fridge: false, memo: newMemo })
+              .eq('id', purchaseItemMap[tid])
+          }
+        }
+      }
+
+      if (failedItems.length > 0) {
+        const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
+        alert(`以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`)
+      } else {
+        onSaved()
+      }
       onClose()
     } catch (e) {
       console.error('保存异常：', e)
@@ -695,11 +778,6 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
 
     async function restockItem(item) {
-    if (!item.add_to_fridge) {
-      alert('该商品未标记为入库')
-      return
-    }
-
     const isDaily = isDailyCategory(item.category)
 
     if (isDaily) {
@@ -726,6 +804,12 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
         purchase_item_id: item.id
       })
     }
+
+    // 入库成功后更新 purchase_item 的 add_to_fridge 状态并清除错误 memo
+    await supabase.from('purchase_items').update({
+      add_to_fridge: true,
+      memo: null
+    }).eq('id', item.id)
 
     alert(`已重新入库到${isDaily ? '非食用品' : '食用品'}`)
   }
@@ -766,18 +850,25 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   // --- BUG FIX STARTS HERE ---
   // Corrected the nested function declaration syntax error
   async function saveHistoryEdit() {
-    await supabase.from('purchase_history').update({
-      store_name: editingHistory.store_name,
-      store_name_original: editingHistory.store_name_original,
-      purchased_at: editingHistory.purchased_at || null,
-      total_amount: editingHistory.total_amount !== '' && editingHistory.total_amount != null
-        ? Number(editingHistory.total_amount) : null
-    }).eq('id', editingHistory.id)
+    let errorMessage = null
+    try {
+      await supabase.from('purchase_history').update({
+        store_name: editingHistory.store_name,
+        store_name_original: editingHistory.store_name_original,
+        purchased_at: editingHistory.purchased_at || null,
+        total_amount: editingHistory.total_amount !== '' && editingHistory.total_amount != null
+          ? Number(editingHistory.total_amount) : null
+      }).eq('id', editingHistory.id)
+    } catch (e) {
+      errorMessage = '编辑小票信息失败：' + e.message
+    }
 
-    if (showAddItems && newItems.length > 0) {
+    if (!errorMessage && showAddItems && newItems.length > 0) {
       const validNew = newItems.filter(item => item.name_zh.trim())
       if (validNew.length > 0) {
-        const historyItems = validNew.map(item => ({
+        const itemsWithTempId = validNew.map((item, i) => ({ ...item, _tempId: i }))
+
+        const historyItems = itemsWithTempId.map(item => ({
           history_id: editingHistory.id,
           name_zh: item.name_zh,
           name_original: item.name_original || null,
@@ -796,39 +887,82 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
         const { data: savedItems } = await supabase
           .from('purchase_items').insert(historyItems).select()
 
-        const foodItems = validNew.map((item, i) => ({ item, i }))
+        // 使用 name_zh 进行映射，避免数组索引错位
+        const purchaseItemMap = {}
+        savedItems?.forEach(saved => {
+          const matched = itemsWithTempId.find(item =>
+            item.name_zh === saved.name_zh && item._tempId !== undefined
+          )
+          if (matched) purchaseItemMap[matched._tempId] = saved.id
+        })
+
+        const failedItems = []
+
+        // 逐条插入食用品库存，失败时标记
+        const foodItems = itemsWithTempId
           .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
-        for (const { item, i } of foodItems) {
-          await supabase.from('ingredients').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            expiry_date: item.expiry_date || null,
-            memo: item.memo || null,
-            location: 'fridge',
-            purchase_item_id: savedItems?.[i]?.id || null
-          })
+        for (const item of foodItems) {
+          const tid = item._tempId
+          try {
+            await supabase.from('ingredients').insert({
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              expiry_date: item.expiry_date || null,
+              memo: item.memo || null,
+              location: 'fridge',
+              purchase_item_id: purchaseItemMap[tid] || null
+            })
+          } catch (e) {
+            failedItems.push({ name: item.name_zh, error: e.message, type: '食用品' })
+            if (purchaseItemMap[tid]) {
+              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+              const oldMemo = existing?.data?.memo || ''
+              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+              await supabase.from('purchase_items')
+                .update({ add_to_fridge: false, memo: newMemo })
+                .eq('id', purchaseItemMap[tid])
+            }
+          }
         }
 
-        const dailyItems = validNew.map((item, i) => ({ item, i }))
+        // 逐条插入非食用品库存，失败时标记
+        const dailyItems = itemsWithTempId
           .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
-        for (const { item, i } of dailyItems) {
-          const savedItemId = savedItems?.[i]?.id || null
-          await supabase.from('daily_items').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            memo: item.memo || null,
-            location: 'home',
-            purchase_item_id: savedItemId
-          })
-          if (savedItemId) {
-            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', savedItemId)
+        for (const item of dailyItems) {
+          const tid = item._tempId
+          try {
+            await supabase.from('daily_items').insert({
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              memo: item.memo || null,
+              location: 'home',
+              purchase_item_id: purchaseItemMap[tid] || null
+            })
+            if (purchaseItemMap[tid]) {
+              await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[tid])
+            }
+          } catch (e) {
+            failedItems.push({ name: item.name_zh, error: e.message, type: '非食用品' })
+            if (purchaseItemMap[tid]) {
+              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
+              const oldMemo = existing?.data?.memo || ''
+              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+              await supabase.from('purchase_items')
+                .update({ add_to_fridge: false, memo: newMemo })
+                .eq('id', purchaseItemMap[tid])
+            }
           }
+        }
+
+        if (failedItems.length > 0) {
+          const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
+          errorMessage = `以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`
         }
       }
     }
@@ -836,6 +970,10 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     setEditingHistory(null)
     setShowAddItems(false)
     setNewItems([])
+
+    if (errorMessage) {
+      alert(errorMessage)
+    }
     fetchHistory()
   }
   // --- BUG FIX ENDS HERE ---
@@ -1425,9 +1563,10 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                   }}>保存</button>
                 </div>
                 {/* 重新入库按钮 */}
-                {editingItem.item.add_to_fridge && (
+                {editingItem.item.category !== '非食材' && (
                   <button onClick={async () => {
                     await restockItem(editingItem.item)
+                    fetchHistory()
                     setEditingItem(null)
                   }} style={{
                     width: '100%', marginTop: 8, padding: '11px 0', borderRadius: 10,
