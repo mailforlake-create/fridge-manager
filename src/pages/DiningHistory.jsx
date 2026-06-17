@@ -440,12 +440,25 @@ function EditDiningModal({ record, onClose, onSaved }) {
     }, new Map())
     const rollbackIngredientIds = [...rollbackByIngredient.keys()]
     const freshIngredients = await fetchIngredientsByIds(rollbackIngredientIds)
+    const clipWarnings = []
 
     for (const ingredient of freshIngredients) {
       const rollbackQty = rollbackByIngredient.get(String(ingredient.id)) || 0
       const currentConsumed = Number(ingredient.consumed_quantity) || 0
-      const newConsumed = parseFloat(Math.max(0, currentConsumed - rollbackQty).toFixed(2))
       const totalQty = Number(ingredient.quantity) || 0
+      const desiredConsumed = parseFloat((currentConsumed - rollbackQty).toFixed(2))
+      // 夹紧到 [0, totalQty] 范围
+      const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
+
+      // 如果被边界限制，记录提示
+      if (newConsumed !== desiredConsumed) {
+        if (desiredConsumed < 0) {
+          clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+        } else if (desiredConsumed > totalQty) {
+          clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
+        }
+      }
+
       const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
 
       await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
@@ -455,6 +468,10 @@ function EditDiningModal({ record, onClose, onSaved }) {
           is_fully_consumed: isFullyConsumed
         }).eq('id', ingredient.purchase_item_id)
       }
+    }
+
+    if (clipWarnings.length > 0) {
+      window.alert(`⚠️ 以下食材库存调整时已被自动限制到合理范围：\n\n${clipWarnings.join('\n')}`)
     }
   }
 
@@ -539,12 +556,30 @@ function EditDiningModal({ record, onClose, onSaved }) {
             `以下食材消耗量已调整，是否同步更新食用品库存？\n\n${qtyChangeSummary}`
           )
           if (shouldSyncQty) {
+            // 从数据库实时获取最新数据，避免使用过期 state
+            const ingredientIds = [...new Set(qtyChangedItems.map(({ item }) => item.ingredient_id).filter(Boolean))]
+            const freshIngredients = await fetchIngredientsByIds(ingredientIds)
+            const ingredientById = new Map(freshIngredients.map(i => [String(i.id), i]))
+            const clipWarnings = []
+
             for (const { item, delta } of qtyChangedItems) {
-              const ingredient = findIngredientById(ingredients, item.ingredient_id)
+              const ingredient = ingredientById.get(String(item.ingredient_id))
               if (ingredient) {
                 const currentConsumed = Number(ingredient.consumed_quantity) || 0
-                const newConsumed = parseFloat(Math.max(0, currentConsumed + delta).toFixed(2))
                 const totalQty = Number(ingredient.quantity) || 0
+                const desiredConsumed = parseFloat((currentConsumed + delta).toFixed(2))
+                // 夹紧到 [0, totalQty] 范围
+                const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
+
+                // 如果被边界限制，记录提示
+                if (newConsumed !== desiredConsumed) {
+                  if (desiredConsumed < 0) {
+                    clipWarnings.push(`・${item.name_zh}：库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+                  } else if (desiredConsumed > totalQty) {
+                    clipWarnings.push(`・${item.name_zh}：库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
+                  }
+                }
+
                 const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
                 await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
                 if (ingredient.purchase_item_id) {
@@ -554,6 +589,10 @@ function EditDiningModal({ record, onClose, onSaved }) {
                   }).eq('id', ingredient.purchase_item_id)
                 }
               }
+            }
+
+            if (clipWarnings.length > 0) {
+              window.alert(`⚠️ 以下食材库存调整时已被自动限制到合理范围：\n\n${clipWarnings.join('\n')}`)
             }
           }
         }
