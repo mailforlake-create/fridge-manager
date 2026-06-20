@@ -377,6 +377,15 @@ export default function Fridge() {
   const FOOD_UNITS = settings.food_units
   const FOOD_LOCS = settings.food_locations
 
+  function calcDaysLeft(expiryDate) {
+    if (!expiryDate) return null
+    const today = new Date()
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const expiry = new Date(expiryDate)
+    const expiryNorm = new Date(expiry.getFullYear(), expiry.getMonth(), expiry.getDate())
+    return Math.round((expiryNorm - todayDate) / 86400000)
+  }
+
   useEffect(() => { if (tab === 'food') fetchItems() }, [tab])
 
   async function fetchItems() {
@@ -414,8 +423,17 @@ export default function Fridge() {
     const matchConsumed = showConsumed || (i.quantity || 0) > (i.consumed_quantity || 0)
     return matchCat && matchSearch && matchConsumed
   })
+  const expired = filtered.filter(i => {
+    const days = calcDaysLeft(i.expiry_date)
+    return days !== null && days < 0
+  })
+  const expiringSoon = filtered.filter(i => {
+    const days = calcDaysLeft(i.expiry_date)
+    return days !== null && days >= 0 && days <= 7
+  })
+  const normalItems = filtered.filter(i => !expired.includes(i) && !expiringSoon.includes(i))
   const groupedByYear = {}
-  filtered.forEach(item => {
+  normalItems.forEach(item => {
     const dateStr = item.purchase_item?.purchase_history?.purchased_at || item.created_at
     const d = dateStr ? new Date(dateStr) : new Date()
     const yearKey = `${d.getFullYear()}年`
@@ -510,9 +528,45 @@ export default function Fridge() {
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
+              {/* 已过期 - 置顶分组 */}
+              {expired.length > 0 && (
+                <div style={{ border: '1px solid #fca5a5', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: '#fef2f2' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#991b1b' }}>🚨 已过期</span>
+                      <span style={{ fontSize: 12, color: '#b91c1c' }}>{expired.length} 件</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {expired.map(item => (
+                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* 即将过期 - 置顶分组 */}
+              {expiringSoon.length > 0 && (
+                <div style={{ border: '1px solid #fde68a', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', background: '#fffbeb' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#92400e' }}>⚠️ 即将过期</span>
+                      <span style={{ fontSize: 12, color: '#b45309' }}>{expiringSoon.length} 件</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {expiringSoon.map(item => (
+                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {normalItems.length > 0 && (() => {
+                const now = new Date()
+                const currentYear = `${now.getFullYear()}年`
+                const currentMonth = `${now.getMonth() + 1}月`
+                return Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
                   const yearItems = Object.values(months).flat()
-                  const isYearCollapsed = collapsedYears[year]
+                  const isYearCollapsed = collapsedYears[year] ?? (year !== currentYear)
 
                   return (
                     <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
@@ -529,7 +583,7 @@ export default function Fridge() {
                         <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {Object.entries(months).sort(([a], [b]) => Number(b.replace('月','')) - Number(a.replace('月',''))).map(([month, monthItems]) => {
                             const monthKey = `${year}-${month}`
-                            const isMonthCollapsed = collapsedMonths[monthKey]
+                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (year === currentYear && month !== currentMonth)
 
                             return (
                               <div key={month}>
@@ -556,7 +610,8 @@ export default function Fridge() {
                       )}
                     </div>
                   )
-                })}
+                })
+              })()}
               </div>
           )}
         </>
