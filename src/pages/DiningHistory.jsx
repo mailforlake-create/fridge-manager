@@ -1904,11 +1904,12 @@ export default function DiningHistory() {
             const now = new Date()
             const currentYear = `${now.getFullYear()}年`
             const currentMonth = `${now.getMonth() + 1}月`
+            const isFiltering = !!(search)
             return Object.entries(groupedByYear).map(([year, months]) => {
             const yearRecords = Object.values(months).flatMap(m => Object.values(m).flat())
             const yearOutTotal = yearRecords.filter(r => r.dining_type === 'out').reduce((s, r) => s + (r.amount || 0), 0)
             const yearHomeTotal = yearRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + getDiningRecordHomeCost(r), 0)
-            const isYearCollapsed = collapsedYears[year] ?? (year !== currentYear)
+            const isYearCollapsed = collapsedYears[year] ?? (!isFiltering && year !== currentYear)
 
             return (
               <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
@@ -1932,7 +1933,7 @@ export default function DiningHistory() {
                       const monthOutTotal = monthRecords.filter(r => r.dining_type === 'out').reduce((s, r) => s + (r.amount || 0), 0)
                       const monthHomeTotal = monthRecords.filter(r => r.dining_type === 'home').reduce((s, r) => s + getDiningRecordHomeCost(r), 0)
                       const monthKey = `${year}-${month}`
-                      const isMonthCollapsed = collapsedMonths[monthKey] ?? (year === currentYear && month !== currentMonth)
+                      const isMonthCollapsed = collapsedMonths[monthKey] ?? (!isFiltering && year === currentYear && month !== currentMonth)
 
                       return (
                         <div key={month}>

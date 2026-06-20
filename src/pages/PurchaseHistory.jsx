@@ -1594,10 +1594,11 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 const now = new Date()
                 const currentYear = `${now.getFullYear()}年`
                 const currentMonth = `${now.getMonth() + 1}月`
+                const isFiltering = !!(search)
                 return Object.entries(groupedByYear).map(([year, months]) => {
                   const yearTotal = Object.values(months).flat().reduce((sum, h) => sum + (Number(h.total_amount) || 0), 0)
                   const yearCount = Object.values(months).flat().length
-                  const isYearCollapsed = collapsedYears[year] ?? (year !== currentYear)
+                  const isYearCollapsed = collapsedYears[year] ?? (!isFiltering && year !== currentYear)
 
                   return (
                     <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
@@ -1620,7 +1621,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                           {Object.entries(months).map(([month, items]) => {
                             const monthTotal = items.reduce((sum, h) => sum + (Number(h.total_amount) || 0), 0)
                             const monthKey = `${year}-${month}`
-                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (year === currentYear && month !== currentMonth)
+                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (!isFiltering && year === currentYear && month !== currentMonth)
 
                             return (
                               <div key={month}>

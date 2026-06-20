@@ -564,9 +564,10 @@ export default function Fridge() {
                 const now = new Date()
                 const currentYear = `${now.getFullYear()}年`
                 const currentMonth = `${now.getMonth() + 1}月`
+                const isFiltering = !!(search || filter !== 'all')
                 return Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
                   const yearItems = Object.values(months).flat()
-                  const isYearCollapsed = collapsedYears[year] ?? (year !== currentYear)
+                  const isYearCollapsed = collapsedYears[year] ?? (!isFiltering && year !== currentYear)
 
                   return (
                     <div key={year} style={{ border: '1px solid #f1f5f9', borderRadius: 12, overflow: 'hidden' }}>
@@ -583,7 +584,7 @@ export default function Fridge() {
                         <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {Object.entries(months).sort(([a], [b]) => Number(b.replace('月','')) - Number(a.replace('月',''))).map(([month, monthItems]) => {
                             const monthKey = `${year}-${month}`
-                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (year === currentYear && month !== currentMonth)
+                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (!isFiltering && year === currentYear && month !== currentMonth)
 
                             return (
                               <div key={month}>
