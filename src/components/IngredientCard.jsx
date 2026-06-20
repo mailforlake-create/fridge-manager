@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 //import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
+import ConfirmModal from './ConfirmModal'
 
 function AddToDiningModal({ item, consumedQty, onClose }) {
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])
@@ -164,6 +165,7 @@ export default function IngredientCard({ item, onDelete, onUpdate }) {
 
   const [showAddDining, setShowAddDining] = useState(false)
   const [pendingConsumeData, setPendingConsumeData] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
   const { settings } = useSettings()
   const itemConsumeStep = Math.min(10, Math.max(0.01, Number(settings.item_consume_step) || 0.1))
@@ -461,9 +463,7 @@ async function saveEdit() {
               </span>
             </div>
           ) : null}
-          <button onClick={() => {
-            if (window.confirm(`确认删除「${item.name_zh}」？`)) onDelete(item.id)
-          }} style={{
+          <button onClick={() => setDeleteConfirm(item)} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
           }}>×</button>
         </div>
@@ -607,6 +607,15 @@ async function saveEdit() {
           item={item}
           consumedQty={pendingConsumeData.qty}
           onClose={() => { setShowAddDining(false); setPendingConsumeData(null) }}
+        />
+      )}
+      {deleteConfirm && (
+        <ConfirmModal
+          title="删除食材"
+          message={`确认删除「${deleteConfirm.name_zh}」？`}
+          confirmText="确认删除"
+          onConfirm={() => { onDelete(deleteConfirm.id); setDeleteConfirm(null) }}
+          onCancel={() => setDeleteConfirm(null)}
         />
       )}
     </div>

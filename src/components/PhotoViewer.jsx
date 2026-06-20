@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 
 export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
   const [preview, setPreview] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
   if (!photos) return null
 
@@ -25,7 +27,7 @@ export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
               <button
                 onClick={e => {
                   e.stopPropagation()
-                  if (window.confirm('确认删除这张照片？')) onDelete(photo)
+                  setDeleteConfirm(photo)
                 }}
                 style={{
                   position: 'absolute', top: -6, right: -6,
@@ -86,10 +88,7 @@ export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
             <button
               onClick={e => {
                 e.stopPropagation()
-                if (window.confirm('确认删除这张照片？')) {
-                  onDelete(preview)
-                  setPreview(null)
-                }
+                setDeleteConfirm(preview)
               }}
               style={{
                 position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
@@ -98,6 +97,19 @@ export default function PhotoViewer({ photos, onDelete, onAdd, uploading }) {
               }}>删除此照片</button>
           )}
         </div>
+      )}
+      {deleteConfirm && (
+        <ConfirmModal
+          title="删除照片"
+          message="确认删除这张照片？"
+          confirmText="确认删除"
+          onConfirm={() => {
+            onDelete(deleteConfirm)
+            setDeleteConfirm(null)
+            setPreview(null)
+          }}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
     </div>
   )

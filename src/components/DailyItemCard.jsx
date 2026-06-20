@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 //import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
+import ConfirmModal from './ConfirmModal'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const { settings } = useSettings()
@@ -15,6 +16,7 @@ const DAILY_LOCS = settings.daily_locations
   const [consumeQty, setConsumeQty] = useState(1)
   const [editingQty, setEditingQty] = useState(false)
   const [showConsumed, setShowConsumed] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [form, setForm] = useState({
     name_zh: item.name_zh,
     name_original: item.name_original || '',
@@ -174,9 +176,7 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
               background: '#f1f5f9', padding: '2px 8px', borderRadius: 99
             }}>已使用</span>
           )}
-          <button onClick={() => {
-            if (window.confirm(`确认删除「${item.name_zh}」？`)) onDelete(item.id)
-          }} style={{
+          <button onClick={() => setDeleteConfirm(item)} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
           }}>×</button>
         </div>
@@ -240,6 +240,15 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             }}>全部</button>
           </div>
         </div>
+      )}
+      {deleteConfirm && (
+        <ConfirmModal
+          title="删除物品"
+          message={`确认删除「${deleteConfirm.name_zh}」？`}
+          confirmText="确认删除"
+          onConfirm={() => { onDelete(deleteConfirm.id); setDeleteConfirm(null) }}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
     </div>
   )

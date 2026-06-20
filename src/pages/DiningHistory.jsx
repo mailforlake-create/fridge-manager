@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
+import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
@@ -250,6 +251,15 @@ function clampIngredientQty(ingredient, qty, min = 0) {
   return Math.min(limit, Math.max(min, Number(qty) || 0))
 }
 
+async function fetchIngredientsByIds(ids) {
+  if (ids.length === 0) return []
+  const { data } = await supabase
+    .from('ingredients')
+    .select('*')
+    .in('id', ids)
+  return data || []
+}
+
 async function hydrateLatestPurchasePrices(ingredients) {
   const purchaseItemIds = [...new Set((ingredients || []).map(i => i.purchase_item_id).filter(Boolean))]
   if (!purchaseItemIds.length) return ingredients || []
@@ -389,6 +399,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
   const[showAddMore, setShowAddMore] = useState(false)
   const [ingredients, setIngredients] = useState([])
   const[addSelected, setAddSelected] = useState({})
+  const [pendingConfirm, setPendingConfirm] = useState(null)
 
   useEffect(() => {
     if (record.dining_type === 'home') fetchIngredients()
@@ -421,15 +432,6 @@ function EditDiningModal({ record, onClose, onSaved }) {
     const price = ing.purchase_item?.price
     if (!price || !qty) return 0
     return Math.round((price * qty / (ing.quantity || 1)) * 10) / 10
-  }
-
-  async function fetchIngredientsByIds(ids) {
-    if (ids.length === 0) return []
-    const { data } = await supabase
-      .from('ingredients')
-      .select('*')
-      .in('id', ids)
-    return data || []
   }
 
   async function rollbackRemovedConsumedItems(removedItems) {
@@ -518,12 +520,24 @@ function EditDiningModal({ record, onClose, onSaved }) {
           const rollbackSummary = rollbackCandidates
             .map(item => `・${item.name_zh || '未命名食材'} ${formatDiningItemQty(item)}`)
             .join('\n')
-          const shouldRollback = window.confirm(
-            `已删除 ${rollbackCandidates.length} 个曾同步消耗量的食材。是否将这些消耗量回退到食用品库存？\n\n${rollbackSummary}`
-          )
-          if (shouldRollback) {
-            await rollbackRemovedConsumedItems(rollbackCandidates)
-          }
+          await new Promise(resolve => {
+            setPendingConfirm({
+              title: '回退库存',
+              message: `已删除 ${rollbackCandidates.length} 个曾同步消耗量的食材。是否将这些消耗量回退到食用品库存？\n\n${rollbackSummary}`,
+              confirmText: '是',
+              cancelText: '否',
+              confirmColor: '#16a34a',
+              onConfirm: async () => {
+                await rollbackRemovedConsumedItems(rollbackCandidates)
+                setPendingConfirm(null)
+                resolve()
+              },
+              onCancel: () => {
+                setPendingConfirm(null)
+                resolve()
+              }
+            })
+          })
         }
 
         if (removedItemIds.length > 0) {
@@ -552,10 +566,23 @@ function EditDiningModal({ record, onClose, onSaved }) {
               return `・${item.name_zh}：${oldQty} → ${newQty}（${action} ${Math.abs(delta)}${item.unit}）`
             })
             .join('\n')
-          const shouldSyncQty = window.confirm(
-            `以下食材消耗量已调整，是否同步更新食用品库存？\n\n${qtyChangeSummary}`
-          )
-          if (shouldSyncQty) {
+          if (await new Promise(resolve => {
+            setPendingConfirm({
+              title: '同步库存',
+              message: `以下食材消耗量已调整，是否同步更新食用品库存？\n\n${qtyChangeSummary}`,
+              confirmText: '是',
+              cancelText: '否',
+              confirmColor: '#16a34a',
+              onConfirm: () => {
+                setPendingConfirm(null)
+                resolve(true)
+              },
+              onCancel: () => {
+                setPendingConfirm(null)
+                resolve(false)
+              }
+            })
+          })) {
             // 从数据库实时获取最新数据，避免使用过期 state
             const ingredientIds = [...new Set(qtyChangedItems.map(({ item }) => item.ingredient_id).filter(Boolean))]
             const freshIngredients = await fetchIngredientsByIds(ingredientIds)
@@ -834,6 +861,17 @@ function EditDiningModal({ record, onClose, onSaved }) {
           </div>
         </div>
       </div>
+      {pendingConfirm && (
+        <ConfirmModal
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          confirmText={pendingConfirm.confirmText}
+          cancelText={pendingConfirm.cancelText}
+          confirmColor={pendingConfirm.confirmColor}
+          onConfirm={pendingConfirm.onConfirm}
+          onCancel={pendingConfirm.onCancel}
+        />
+      )}
     </div>
   )
 }
@@ -1653,6 +1691,7 @@ export default function DiningHistory() {
   const [detailItem, setDetailItem] = useState(null)
   const [selectingIngredients, setSelectingIngredients] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [deleteMode, setDeleteMode] = useState(null) // 'ask' | null
   const [deletingRecord, setDeletingRecord] = useState(false)
   const [photos, setPhotos] = useState({})
   const[uploadingKey, setUploadingKey] = useState(null)
@@ -1724,24 +1763,73 @@ export default function DiningHistory() {
   }
 
   function confirmDeleteRecord(record) {
-    setDeleteConfirm(record)
+    // 检查是否有可回退的食材
+    const rollbackItems = (record.dining_items || []).filter(i => i.ingredient_id && i.update_consumed && getDiningItemConsumedQty(i) > 0)
+    const hasRollback = record.dining_type === 'home' && rollbackItems.length > 0
+    const rollbackSummary = hasRollback
+      ? rollbackItems.map(i => `・${i.name_zh} ${formatDiningItemQty(i)}`).join('\n')
+      : ''
+    setDeleteConfirm({ record, hasRollback, rollbackSummary })
   }
 
-  async function deleteRecordConfirmed() {
-    if (!deleteConfirm || deletingRecord) return
-
+  async function deleteRecordWithRollback(record, alsoRollback) {
+    if (!record || deletingRecord) return
     setDeletingRecord(true)
-    const id = deleteConfirm.id
-    const { error } = await supabase.from('dining_history').delete().eq('id', id)
-    setDeletingRecord(false)
 
-    if (error) {
-      alert('删除失败：' + error.message)
-      return
+    try {
+      if (alsoRollback) {
+        const rollbackItems = (record.dining_items || []).filter(i => i.ingredient_id && i.update_consumed && getDiningItemConsumedQty(i) > 0)
+        if (rollbackItems.length > 0) {
+          const rollbackByIngredient = rollbackItems.reduce((map, item) => {
+            const key = String(item.ingredient_id)
+            map.set(key, (map.get(key) || 0) + getDiningItemConsumedQty(item))
+            return map
+          }, new Map())
+          const ingredientIds = [...rollbackByIngredient.keys()]
+          const freshIngredients = await fetchIngredientsByIds(ingredientIds)
+          const clipWarnings = []
+
+          for (const ingredient of freshIngredients) {
+            const rollbackQty = rollbackByIngredient.get(String(ingredient.id)) || 0
+            const currentConsumed = Number(ingredient.consumed_quantity) || 0
+            const totalQty = Number(ingredient.quantity) || 0
+            const desiredConsumed = parseFloat((currentConsumed - rollbackQty).toFixed(2))
+            const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
+
+            if (newConsumed !== desiredConsumed) {
+              if (desiredConsumed < 0) {
+                clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+              } else if (desiredConsumed > totalQty) {
+                clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
+              }
+            }
+
+            const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
+            await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
+            if (ingredient.purchase_item_id) {
+              await supabase.from('purchase_items').update({
+                consumed_quantity: newConsumed,
+                is_fully_consumed: isFullyConsumed
+              }).eq('id', ingredient.purchase_item_id)
+            }
+          }
+
+          if (clipWarnings.length > 0) {
+            window.alert(`⚠️ 以下食材库存调整时已被自动限制到合理范围：\n\n${clipWarnings.join('\n')}`)
+          }
+        }
+      }
+
+      const { error } = await supabase.from('dining_history').delete().eq('id', record.id)
+      if (error) { alert('删除失败：' + error.message); return }
+
+      setRecords(records.filter(r => r.id !== record.id))
+    } catch (e) {
+      alert('删除失败：' + e.message)
+    } finally {
+      setDeletingRecord(false)
+      setDeleteConfirm(null)
     }
-
-    setRecords(records.filter(r => r.id !== id))
-    setDeleteConfirm(null)
   }
 
   function handleSaveMemo(itemId, memo) {
@@ -1982,29 +2070,27 @@ export default function DiningHistory() {
 
 
       {deleteConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 3000, padding: 24
-        }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>删除餐饮记录</div>
-            <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>
-              确定要删除这条{deleteConfirm.dining_type === 'home' ? '自炊' : '外食'}记录吗？删除后无法恢复。
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={deleteRecordConfirmed} disabled={deletingRecord} style={{
-                padding: '11px 0', borderRadius: 10, background: '#ef4444',
-                color: '#fff', fontSize: 15, fontWeight: 700,
-                opacity: deletingRecord ? 0.7 : 1
-              }}>{deletingRecord ? '删除中...' : '确认删除'}</button>
-              <button onClick={() => setDeleteConfirm(null)} disabled={deletingRecord} style={{
-                padding: '11px 0', borderRadius: 10, background: '#fff',
-                color: '#94a3b8', fontSize: 14, border: '1px solid #e2e8f0'
-              }}>取消</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="删除餐饮记录"
+          message={deleteConfirm.hasRollback
+            ? `确定要删除这条${deleteConfirm.record.dining_type === 'home' ? '自炊' : '外食'}记录吗？删除后无法恢复。\n\n检测到以下食材曾同步消耗量，是否同时回退库存？\n${deleteConfirm.rollbackSummary}`
+            : `确定要删除这条${deleteConfirm.record.dining_type === 'home' ? '自炊' : '外食'}记录吗？删除后无法恢复。`}
+          confirmText={deleteConfirm.hasRollback ? '是，删除并回退库存' : '确认删除'}
+          cancelText={deleteConfirm.hasRollback ? '否，仅删除记录' : '取消'}
+          cancelExtraText={deleteConfirm.hasRollback ? '取消' : undefined}
+          confirmColor={deleteConfirm.hasRollback ? '#16a34a' : '#ef4444'}
+          onConfirm={async () => {
+            await deleteRecordWithRollback(deleteConfirm.record, deleteConfirm.hasRollback)
+          }}
+          onCancel={() => {
+            if (deleteConfirm.hasRollback) {
+              deleteRecordWithRollback(deleteConfirm.record, false)
+            } else {
+              setDeleteConfirm(null)
+            }
+          }}
+          onCancelExtra={deleteConfirm.hasRollback ? () => setDeleteConfirm(null) : undefined}
+        />
       )}
 
       {showAdd && <AddDiningModal onClose={() => setShowAdd(false)} onSaved={fetchRecords} />}
