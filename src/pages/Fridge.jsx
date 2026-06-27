@@ -372,6 +372,7 @@ export default function Fridge() {
   const [collapsedYears, setCollapsedYears] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [showConsumed, setShowConsumed] = useState(false)
+  const [dateFilter, setDateFilter] = useState('')
   const { settings } = useSettings()
   const FOOD_CATS = settings.food_categories
   const FOOD_UNITS = settings.food_units
@@ -421,13 +422,17 @@ export default function Fridge() {
       i.name_original?.includes(search) ||
       i.category?.includes(search)
     const matchConsumed = showConsumed || (i.quantity || 0) > (i.consumed_quantity || 0)
-    return matchCat && matchSearch && matchConsumed
+    const itemDate = i.purchase_item?.purchase_history?.purchased_at
+    const matchDate = !dateFilter || (itemDate && itemDate.slice(0, 10) === dateFilter)
+    return matchCat && matchSearch && matchConsumed && matchDate
   })
   const expired = filtered.filter(i => {
+    if ((i.quantity || 0) <= (i.consumed_quantity || 0)) return false
     const days = calcDaysLeft(i.expiry_date)
     return days !== null && days < 0
   })
   const expiringSoon = filtered.filter(i => {
+    if ((i.quantity || 0) <= (i.consumed_quantity || 0)) return false
     const days = calcDaysLeft(i.expiry_date)
     return days !== null && days >= 0 && days <= 7
   })
@@ -499,13 +504,31 @@ export default function Fridge() {
               </span>
             )}
           </div>
-          {/* 搜索框 */}
-          <div style={{ position: 'relative', marginBottom: 12 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索食材名称、分类..."
-              style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
-            {search && (
-              <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+          {/* 搜索框 + 日历筛选 */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索食材名称、分类..."
+                style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
+              {search && (
+                <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+              )}
+            </div>
+            <button onClick={() => document.getElementById('fridge-date-input').showPicker?.() || document.getElementById('fridge-date-input').click()}
+              style={{
+                width: 42, flexShrink: 0, borderRadius: 10, fontSize: 18,
+                border: dateFilter ? '1.5px solid #16a34a' : '1.5px solid #e2e8f0',
+                background: dateFilter ? '#f0fdf4' : '#fff', cursor: 'pointer'
+              }}>📅</button>
+            <input id="fridge-date-input" type="date" value={dateFilter}
+              onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
+              style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+            {dateFilter && (
+              <button onClick={() => setDateFilter('')}
+                style={{
+                  width: 42, flexShrink: 0, borderRadius: 10, fontSize: 14, fontWeight: 600,
+                  border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+                }}>✕</button>
             )}
           </div>
 
@@ -564,7 +587,7 @@ export default function Fridge() {
                 const now = new Date()
                 const currentYear = `${now.getFullYear()}年`
                 const currentMonth = `${now.getMonth() + 1}月`
-                const isFiltering = !!(search || filter !== 'all')
+                const isFiltering = !!(search || filter !== 'all' || dateFilter)
                 return Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
                   const yearItems = Object.values(months).flat()
                   const isYearCollapsed = collapsedYears[year] ?? (!isFiltering && year !== currentYear)

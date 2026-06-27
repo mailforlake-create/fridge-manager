@@ -20,6 +20,7 @@ export default function DailyItems() {
   const [collapsedYears, setCollapsedYears] = useState({})
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [showConsumed, setShowConsumed] = useState(false)
+  const [dateFilter, setDateFilter] = useState('')
   const { settings } = useSettings()
 const DAILY_CATS = settings.daily_categories
 const DAILY_UNITS = settings.daily_units
@@ -81,7 +82,9 @@ const DAILY_LOCS = settings.daily_locations
       i.name_original?.includes(search) ||
       i.category?.includes(search)
     const matchConsumed = showConsumed || (i.quantity || 0) > (i.consumed_quantity || 0)
-    return matchCat && matchSearch && matchConsumed
+    const itemDate = i.purchase_item?.purchase_history?.purchased_at
+    const matchDate = !dateFilter || (itemDate && itemDate.slice(0, 10) === dateFilter)
+    return matchCat && matchSearch && matchConsumed && matchDate
   })
 
   const field = {
@@ -100,14 +103,32 @@ const DAILY_LOCS = settings.daily_locations
         </span>
       </div>
 
-      {/* 搜索框 */}
-      <div style={{ position: 'relative', marginBottom: 12 }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="搜索物品名称、分类..."
-          style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
-        {search && (
-          <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+      {/* 搜索框 + 日历筛选 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="搜索物品名称、分类..."
+            style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
+          {search && (
+            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+          )}
+        </div>
+        <button onClick={() => document.getElementById('daily-date-input').showPicker?.() || document.getElementById('daily-date-input').click()}
+          style={{
+            width: 42, flexShrink: 0, borderRadius: 10, fontSize: 18,
+            border: dateFilter ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0',
+            background: dateFilter ? '#eff6ff' : '#fff', cursor: 'pointer'
+          }}>📅</button>
+        <input id="daily-date-input" type="date" value={dateFilter}
+          onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
+          style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+        {dateFilter && (
+          <button onClick={() => setDateFilter('')}
+            style={{
+              width: 42, flexShrink: 0, borderRadius: 10, fontSize: 14, fontWeight: 600,
+              border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+            }}>✕</button>
         )}
       </div>
 

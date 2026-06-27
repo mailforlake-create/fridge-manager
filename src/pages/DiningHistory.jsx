@@ -1683,6 +1683,7 @@ export default function DiningHistory() {
   const[records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [expanded, setExpanded] = useState({})
   const[collapsedYears, setCollapsedYears] = useState({})
@@ -1841,6 +1842,10 @@ export default function DiningHistory() {
 
   const filtered = records.filter(r => {
     if (filterType !== 'all' && r.dining_type !== filterType) return false
+    if (dateFilter) {
+      const itemDate = r.dined_at || r.created_at
+      if (!itemDate || itemDate.slice(0, 10) !== dateFilter) return false
+    }
     if (!search) return true
     const s = search.toLowerCase()
     return r.store_name?.toLowerCase().includes(s) ||
@@ -1870,11 +1875,29 @@ export default function DiningHistory() {
         <button onClick={() => setShowAdd(true)} style={{ padding: '7px 16px', borderRadius: 10, background: '#f97316', color: '#fff', fontSize: 14, fontWeight: 600 }}>+ 记录</button>
       </div>
 
-      <div style={{ position: 'relative', marginBottom: 16 }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索店名、食材..."
-          style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
-        {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索店名、食材..."
+            style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
+          {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>}
+        </div>
+        <button onClick={() => document.getElementById('dining-date-input').showPicker?.() || document.getElementById('dining-date-input').click()}
+          style={{
+            width: 42, flexShrink: 0, borderRadius: 10, fontSize: 18,
+            border: dateFilter ? '1.5px solid #f97316' : '1.5px solid #e2e8f0',
+            background: dateFilter ? '#fff7ed' : '#fff', cursor: 'pointer'
+          }}>📅</button>
+        <input id="dining-date-input" type="date" value={dateFilter}
+          onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
+          style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+        {dateFilter && (
+          <button onClick={() => setDateFilter('')}
+            style={{
+              width: 42, flexShrink: 0, borderRadius: 10, fontSize: 14, fontWeight: 600,
+              border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+            }}>✕</button>
+        )}
       </div>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
@@ -1904,7 +1927,7 @@ export default function DiningHistory() {
             const now = new Date()
             const currentYear = `${now.getFullYear()}年`
             const currentMonth = `${now.getMonth() + 1}月`
-            const isFiltering = !!(search)
+            const isFiltering = !!(search || dateFilter)
             return Object.entries(groupedByYear).map(([year, months]) => {
             const yearRecords = Object.values(months).flatMap(m => Object.values(m).flat())
             const yearOutTotal = yearRecords.filter(r => r.dining_type === 'out').reduce((s, r) => s + (r.amount || 0), 0)

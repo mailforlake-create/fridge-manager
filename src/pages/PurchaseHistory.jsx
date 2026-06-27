@@ -951,6 +951,7 @@ export default function PurchaseHistory() {
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
   const [editingItem, setEditingItem] = useState(null)
   const [editingHistory, setEditingHistory] = useState(null)
   const [confirm, setConfirm] = useState(null)
@@ -1348,6 +1349,11 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   }
 
   const filteredHistory = history.map(h => {
+    // 日期过滤
+    if (dateFilter) {
+      const itemDate = h.purchased_at || h.created_at
+      if (!itemDate || itemDate.slice(0, 10) !== dateFilter) return null
+    }
     if (!search) return { ...h, matchedItems: null }
     const s = search.toLowerCase()
     const storeMatch =
@@ -1423,23 +1429,41 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
             </button>
           </div>
 
-          <div style={{ position: 'relative', marginBottom: 16 }}>
-            <span style={{
-              position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 16, color: '#94a3b8', pointerEvents: 'none'
-            }}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="搜索商家、商品名称..."
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span style={{
+                position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                fontSize: 16, color: '#94a3b8', pointerEvents: 'none'
+              }}>🔍</span>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="搜索商家、商品名称..."
+                style={{
+                  width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
+                  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
+                  boxSizing: 'border-box'
+                }} />
+              {search && (
+                <button onClick={() => setSearch('')} style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1
+                }}>×</button>
+              )}
+            </div>
+            <button onClick={() => document.getElementById('purchase-date-input').showPicker?.() || document.getElementById('purchase-date-input').click()}
               style={{
-                width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
-                border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
-                boxSizing: 'border-box'
-              }} />
-            {search && (
-              <button onClick={() => setSearch('')} style={{
-                position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1
-              }}>×</button>
+                width: 42, flexShrink: 0, borderRadius: 10, fontSize: 18,
+                border: dateFilter ? '1.5px solid #16a34a' : '1.5px solid #e2e8f0',
+                background: dateFilter ? '#f0fdf4' : '#fff', cursor: 'pointer'
+              }}>📅</button>
+            <input id="purchase-date-input" type="date" value={dateFilter}
+              onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
+              style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+            {dateFilter && (
+              <button onClick={() => setDateFilter('')}
+                style={{
+                  width: 42, flexShrink: 0, borderRadius: 10, fontSize: 14, fontWeight: 600,
+                  border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#dc2626', cursor: 'pointer'
+                }}>✕</button>
             )}
           </div>
           
@@ -1823,7 +1847,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 const now = new Date()
                 const currentYear = `${now.getFullYear()}年`
                 const currentMonth = `${now.getMonth() + 1}月`
-                const isFiltering = !!(search)
+                const isFiltering = !!(search || dateFilter)
                 return Object.entries(groupedByYear).map(([year, months]) => {
                   const yearTotal = Object.values(months).flat().reduce((sum, h) => sum + (Number(h.total_amount) || 0), 0)
                   const yearCount = Object.values(months).flat().length
