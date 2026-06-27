@@ -1882,20 +1882,17 @@ export default function DiningHistory() {
             style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
           {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>}
         </div>
-        <div style={{ position: 'relative', width: 42, flexShrink: 0 }}>
-          <div style={{
+        <label style={{ width: 42, flexShrink: 0, cursor: 'pointer', display: 'block', position: 'relative', overflow: 'hidden' }}>
+          <span style={{
             width: 42, height: 42, borderRadius: 10, fontSize: 18,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             border: dateFilter ? '1.5px solid #f97316' : '1.5px solid #e2e8f0',
             background: dateFilter ? '#fff7ed' : '#fff'
-          }}>📅</div>
+          }}>📅</span>
           <input type="date" value={dateFilter}
             onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
-            style={{
-              position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
-              cursor: 'pointer', border: 'none', fontSize: 16
-            }} />
-        </div>
+            style={{ position: 'absolute', left: 0, top: 0, opacity: 0, width: 42, height: 42, fontSize: 16 }} />
+        </label>
         {dateFilter && (
           <button onClick={() => setDateFilter('')}
             style={{
