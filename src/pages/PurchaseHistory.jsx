@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
@@ -68,6 +68,206 @@ function ItemDetailModal({ item, onClose }) {
 
 
 
+/**
+ * 入库结果弹窗 — 逐条显示物品入库状态，插入后查库验证，失败自动重试
+ */
+function StorageResultModal({ storageItems, onFinish }) {
+  const [results, setResults] = useState(() => {
+    const r = {}
+    storageItems.forEach(item => { r[item.tempId] = 'pending' })
+    return r
+  })
+  // stockInfo: { [tempId]: { beforeQty: 5, insertQty: 2, afterQty: 7 } }
+  const [stockInfo, setStockInfo] = useState({})
+  const [phaseText, setPhaseText] = useState('正在逐条入库...')
+  const [done, setDone] = useState(false)
+  const runningRef = useRef(false)
+
+  // 查询某个物品在当前表中的库存总量
+  async function queryCurrentStock(table, nameZh) {
+    try {
+      const { data } = await supabase.from(table).select('quantity')
+      const matched = (data || []).filter(r => r.name_zh === nameZh)
+      return matched.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)
+    } catch { return '?' }
+  }
+
+  useEffect(() => {
+    if (runningRef.current) return
+    runningRef.current = true
+    runStorage()
+  }, [])
+
+  const finalFailedRef = useRef([])
+
+  async function runStorage() {
+    finalFailedRef.current = []
+
+    // ---- 先查询每件物品的当前在库数量 ----
+    const initStock = {}
+    for (const item of storageItems) {
+      const qty = await queryCurrentStock(item.table, item.name)
+      initStock[item.tempId] = { beforeQty: qty, insertQty: Number(item.data.quantity) || 1 }
+    }
+    setStockInfo(initStock)
+
+    // ---- 第一轮：逐条入库 ----
+    const firstFailed = []
+    for (const item of storageItems) {
+      setResults(r => ({ ...r, [item.tempId]: 'processing' }))
+      try {
+        const { data, error } = await supabase.from(item.table).insert(item.data).select()
+        if (error) throw new Error(error.message)
+        if (!data || !data[0] || !data[0].id) throw new Error('数据库返回数据异常，未获取到记录ID')
+        // ★ 关键：查询数据库确认该记录已持久化
+        const { data: verify, error: verifyError } = await supabase
+          .from(item.table).select('id').eq('id', data[0].id)
+        if (verifyError) throw new Error('入库后验证查询失败: ' + verifyError.message)
+        if (!verify || verify.length === 0) throw new Error('入库后未能在数据库中查询到该记录')
+        setResults(r => ({ ...r, [item.tempId]: 'success' }))
+        setStockInfo(prev => ({
+          ...prev,
+          [item.tempId]: { ...prev[item.tempId], afterQty: (prev[item.tempId]?.beforeQty || 0) + (prev[item.tempId]?.insertQty || 1) }
+        }))
+        if (item.purchaseItemId) {
+          await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', item.purchaseItemId)
+        }
+      } catch (e) {
+        firstFailed.push({ ...item, error: e.message })
+        setResults(r => ({ ...r, [item.tempId]: 'failed' }))
+        setStockInfo(prev => ({
+          ...prev,
+          [item.tempId]: { ...prev[item.tempId], afterQty: '失败' }
+        }))
+      }
+    }
+
+    // ---- 第二轮：重试失败项 ----
+    if (firstFailed.length > 0) {
+      setPhaseText(`正在重试 ${firstFailed.length} 件失败商品...`)
+      for (const item of firstFailed) {
+        setResults(r => ({ ...r, [item.tempId]: 'processing' }))
+        try {
+          const { data, error } = await supabase.from(item.table).insert(item.data).select()
+          if (error) throw new Error(error.message)
+          if (!data || !data[0] || !data[0].id) throw new Error('重试时数据库返回数据异常')
+          const { data: verify, error: verifyError } = await supabase
+            .from(item.table).select('id').eq('id', data[0].id)
+          if (verifyError) throw new Error('重试后验证查询失败: ' + verifyError.message)
+          if (!verify || verify.length === 0) throw new Error('重试后仍未在数据库中查询到该记录')
+          setResults(r => ({ ...r, [item.tempId]: 'success' }))
+          setStockInfo(prev => ({
+            ...prev,
+            [item.tempId]: { ...prev[item.tempId], afterQty: (prev[item.tempId]?.beforeQty || 0) + (prev[item.tempId]?.insertQty || 1) }
+          }))
+          if (item.purchaseItemId) {
+            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', item.purchaseItemId)
+          }
+        } catch (e) {
+          finalFailedRef.current.push({ name: item.name, type: item.type, error: e.message })
+          setResults(r => ({ ...r, [item.tempId]: 'failed' }))
+          setStockInfo(prev => ({
+            ...prev,
+            [item.tempId]: { ...prev[item.tempId], afterQty: '失败' }
+          }))
+          if (item.purchaseItemId) {
+            try {
+              const { data: existing } = await supabase
+                .from('purchase_items').select('memo').eq('id', item.purchaseItemId).single()
+              const oldMemo = existing?.memo || ''
+              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
+              await supabase.from('purchase_items')
+                .update({ add_to_fridge: false, memo: newMemo }).eq('id', item.purchaseItemId)
+            } catch (memoErr) { console.error('更新失败备注出错：', memoErr) }
+          }
+        }
+      }
+    }
+
+    setPhaseText(finalFailedRef.current.length === 0 ? '全部入库成功 ✅' : `入库完成，${finalFailedRef.current.length} 件失败 ❌`)
+    setDone(true)
+    // 不移除弹窗，让用户手动点击按钮关闭
+  }
+
+
+  const statusIcon = (s) => s === 'pending' ? '⏳' : s === 'processing' ? '🔄' : s === 'success' ? '✅' : '❌'
+
+  const successCount = Object.values(results).filter(s => s === 'success').length
+  const totalCount = storageItems.length
+  const failedCount = Object.values(results).filter(s => s === 'failed').length
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 16,
+        width: '100%', maxWidth: 430,
+        position: 'relative', maxHeight: '90vh'
+      }}>
+        <div style={{ padding: '20px 20px 12px' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>📦 物品入库</div>
+          <div style={{ fontSize: 13, color: '#64748b' }}>
+            {phaseText}
+            {!done && <span style={{ marginLeft: 8, fontSize: 12, color: '#94a3b8' }}>{successCount}/{totalCount}</span>}
+          </div>
+        </div>
+
+        <div style={{
+          overflowY: 'auto',
+          padding: '0 20px',
+          maxHeight: done ? 'calc(90vh - 140px)' : 'calc(90vh - 80px)'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {storageItems.map(item => (
+              <div key={item.tempId} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 10px', borderRadius: 10,
+                background: results[item.tempId] === 'success' ? '#f0fdf4'
+                  : results[item.tempId] === 'failed' ? '#fef2f2'
+                  : results[item.tempId] === 'processing' ? '#fefce8' : '#f8fafc'
+              }}>
+                <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>
+                  {statusIcon(results[item.tempId] || 'pending')}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.type}</div>
+                  {stockInfo[item.tempId] && (
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      入库前: {stockInfo[item.tempId].beforeQty} | 入库: {stockInfo[item.tempId].insertQty} | 入库后: {stockInfo[item.tempId].afterQty ?? '...'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 20px 20px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+          <button
+            onClick={() => onFinish({ failedItems: finalFailedRef.current })}
+            disabled={!done}
+            style={{
+              width: '100%', padding: '12px 0', borderRadius: 12,
+              background: !done ? '#cbd5e1' : (failedCount > 0 ? '#f59e0b' : '#16a34a'),
+              color: '#fff', fontSize: 15, fontWeight: 700, border: 'none',
+              cursor: done ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {!done ? `入库中... ${successCount}/${totalCount}` : (failedCount > 0 ? `关闭（${failedCount} 件失败）` : '完成')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+
 function ReceiptScanModal({ onClose, onSaved }) {
   const [aiItems, setAiItems] = useState([])
   const [selected, setSelected] = useState({})
@@ -78,6 +278,8 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [storeNameOriginal, setStoreNameOriginal] = useState('')
   const [purchasedAt, setPurchasedAt] = useState('')
   const [totalAmount, setTotalAmount] = useState('')
+  const [showStorageResult, setShowStorageResult] = useState(false)
+  const [storageItems, setStorageItems] = useState([])
   const { settings } = useSettings()
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
@@ -119,15 +321,14 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   async function save() {
     setSaving(true)
-    const failedItems = []
     try {
       const { data: history } = await supabase
         .from('purchase_history')
         .insert({
-          store_name: receiptData.store_name || '未知商家',
-          store_name_original: receiptData.store_name_original || null,
-          purchased_at: receiptData.purchased_at || null,
-          total_amount: receiptData.total_amount || null
+          store_name: storeName || receiptData?.store_name || '未知商家',
+          store_name_original: storeNameOriginal || receiptData?.store_name_original || null,
+          purchased_at: purchasedAt || receiptData?.purchased_at || null,
+          total_amount: totalAmount || receiptData?.total_amount || null
         }).select().single()
 
       if (history) {
@@ -167,85 +368,84 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           }
         })
 
-        // 逐条插入食用品库存，失败时标记并记录
-        const fridgeItems = itemsWithTempId
-          .filter((item, i) => selected[item._tempId] && !isDailyCategory(item.category) && item.category !== '非食材')
+        // ★ 改造：收集待入库物品，委托 StorageResultModal 处理
+        const inventoryItems = []
 
-        for (const item of fridgeItems) {
-          const tid = item._tempId
-          try {
-            await supabase.from('ingredients').insert({
-              name_zh: item.name_zh,
-              name_original: item.name_original || null,
-              category: item.category || null,
-              quantity: Number(item.quantity) || 1,
-              unit: item.unit || '个',
-              expiry_date: item.expiry_date || null,
-              memo: item.memo || null,
-              location: 'fridge',
-              purchase_item_id: purchaseItemMap[tid] || null
+        // 食用品
+        itemsWithTempId
+          .filter((item) => selected[item._tempId] && !isDailyCategory(item.category) && item.category !== '非食材')
+          .forEach(item => {
+            const tid = item._tempId
+            inventoryItems.push({
+              tempId: `food_${tid}`,
+              name: item.name_zh,
+              type: '食用品',
+              table: 'ingredients',
+              data: {
+                name_zh: item.name_zh,
+                name_original: item.name_original || null,
+                category: item.category || null,
+                quantity: Number(item.quantity) || 1,
+                unit: item.unit || '个',
+                expiry_date: item.expiry_date || null,
+                memo: item.memo || null,
+                location: 'fridge',
+                purchase_item_id: purchaseItemMap[tid] || null
+              },
+              purchaseItemId: purchaseItemMap[tid] || null
             })
-          } catch (e) {
-            failedItems.push({ name: item.name_zh, error: e.message, type: '食用品' })
-            if (purchaseItemMap[tid]) {
-              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
-              const oldMemo = existing?.data?.memo || ''
-              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
-              await supabase.from('purchase_items')
-                .update({ add_to_fridge: false, memo: newMemo })
-                .eq('id', purchaseItemMap[tid])
-            }
-          }
-        }
+          })
 
-        // 逐条插入非食用品库存，失败时标记并记录
-        const dailyItems = itemsWithTempId
+        // 非食用品
+        itemsWithTempId
           .filter((item) => selected[item._tempId] && isDailyCategory(item.category))
-
-        for (const item of dailyItems) {
-          const tid = item._tempId
-          try {
-            await supabase.from('daily_items').insert({
-              name_zh: item.name_zh,
-              name_original: item.name_original || null,
-              category: item.category || null,
-              quantity: Number(item.quantity) || 1,
-              unit: item.unit || '个',
-              location: 'home',
-              memo: item.memo || null,
-              purchase_item_id: purchaseItemMap[tid] || null
+          .forEach(item => {
+            const tid = item._tempId
+            inventoryItems.push({
+              tempId: `daily_${tid}`,
+              name: item.name_zh,
+              type: '非食用品',
+              table: 'daily_items',
+              data: {
+                name_zh: item.name_zh,
+                name_original: item.name_original || null,
+                category: item.category || null,
+                quantity: Number(item.quantity) || 1,
+                unit: item.unit || '个',
+                location: 'home',
+                memo: item.memo || null,
+                purchase_item_id: purchaseItemMap[tid] || null
+              },
+              purchaseItemId: purchaseItemMap[tid] || null
             })
-            // 入库成功，确保 purchase_item 的 add_to_fridge 为 true
-            if (purchaseItemMap[tid]) {
-              await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[tid])
-            }
-          } catch (e) {
-            failedItems.push({ name: item.name_zh, error: e.message, type: '非食用品' })
-            if (purchaseItemMap[tid]) {
-              const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
-              const oldMemo = existing?.data?.memo || ''
-              const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
-              await supabase.from('purchase_items')
-                .update({ add_to_fridge: false, memo: newMemo })
-                .eq('id', purchaseItemMap[tid])
-            }
-          }
-        }
+          })
+
+        // 保存到 state，打开 StorageResultModal
+        setStorageItems(inventoryItems)
+        setShowStorageResult(true)
+        setSaving(false)
       }
-      if (failedItems.length > 0) {
-        const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
-        alert(`以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`)
-      } else {
-        onSaved()
-      }
-      onClose()
     } catch (e) {
       alert('保存失败：' + e.message)
+      setSaving(false)
     }
-    setSaving(false)
+  }
+
+  function onStorageFinish({ failedItems }) {
+    setShowStorageResult(false)
+    if (!failedItems || failedItems.length === 0) {
+      onSaved()
+      onClose()
+    } else {
+      const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
+      alert(`以下 ${failedItems.length} 件商品重试后仍入库失败，已标记为未入库并在备注中记录：\n\n${detail}`)
+      onSaved()
+      onClose()
+    }
   }
 
   return (
+    <>
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxWidth: 430, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -388,6 +588,13 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
         )}
       </div>
     </div>
+    {showStorageResult && (
+      <StorageResultModal
+        storageItems={storageItems}
+        onFinish={onStorageFinish}
+      />
+    )}
+    </>
   )
 }
 
@@ -405,6 +612,8 @@ function ManualReceiptModal({ onClose, onSaved }) {
     expiry_date: '', add_to_fridge: true
   }])
   const [saving, setSaving] = useState(false)
+  const [showManualStorageResult, setShowManualStorageResult] = useState(false)
+  const [manualStorageItems, setManualStorageItems] = useState([])
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -442,7 +651,6 @@ function ManualReceiptModal({ onClose, onSaved }) {
     if (validItems.length === 0) return alert('请至少添加一件商品')
 
     setSaving(true)
-    const failedItems = []
     try {
       const { data: history, error: historyError } = await supabase
         .from('purchase_history')
@@ -491,83 +699,83 @@ function ManualReceiptModal({ onClose, onSaved }) {
         if (matched) purchaseItemMap[matched._tempId] = saved.id
       })
 
-      // 逐条插入食用品库存，失败时标记并记录
-      const foodItems = itemsWithTempId
-        .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
-      for (const item of foodItems) {
-        const tid = item._tempId
-        try {
-          await supabase.from('ingredients').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            expiry_date: item.expiry_date || null,
-            memo: item.memo || null,
-            location: 'fridge',
-            purchase_item_id: purchaseItemMap[tid] || null
-          })
-        } catch (e) {
-          failedItems.push({ name: item.name_zh, error: e.message, type: '食用品' })
-          if (purchaseItemMap[tid]) {
-            const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
-            const oldMemo = existing?.data?.memo || ''
-            const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
-            await supabase.from('purchase_items')
-              .update({ add_to_fridge: false, memo: newMemo })
-              .eq('id', purchaseItemMap[tid])
-          }
-        }
-      }
+      // ★ 改造：收集待入库物品，委托 StorageResultModal 处理
+      const inventoryItems = []
 
-      // 逐条插入非食用品库存，失败时标记并记录
-      const dailyItems = itemsWithTempId
-        .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
-      for (const item of dailyItems) {
-        const tid = item._tempId
-        try {
-          await supabase.from('daily_items').insert({
-            name_zh: item.name_zh,
-            name_original: item.name_original || null,
-            category: item.category || null,
-            quantity: Number(item.quantity) || 1,
-            unit: item.unit || '个',
-            memo: item.memo || null,
-            location: 'home',
-            purchase_item_id: purchaseItemMap[tid] || null
+      // 食用品（修正原有 ({ item }) 解构错误）
+      itemsWithTempId
+        .filter((item) => item.add_to_fridge && (item.stock_type || 'food') === 'food' && item.category !== '非食材')
+        .forEach(item => {
+          const tid = item._tempId
+          inventoryItems.push({
+            tempId: `food_${tid}`,
+            name: item.name_zh,
+            type: '食用品',
+            table: 'ingredients',
+            data: {
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              expiry_date: item.expiry_date || null,
+              memo: item.memo || null,
+              location: 'fridge',
+              purchase_item_id: purchaseItemMap[tid] || null
+            },
+            purchaseItemId: purchaseItemMap[tid] || null
           })
-          if (purchaseItemMap[tid]) {
-            await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', purchaseItemMap[tid])
-          }
-        } catch (e) {
-          failedItems.push({ name: item.name_zh, error: e.message, type: '非食用品' })
-          if (purchaseItemMap[tid]) {
-            const existing = await supabase.from('purchase_items').select('memo').eq('id', purchaseItemMap[tid]).single()
-            const oldMemo = existing?.data?.memo || ''
-            const newMemo = oldMemo ? `${oldMemo}; 入库失败: ${e.message}` : `入库失败: ${e.message}`
-            await supabase.from('purchase_items')
-              .update({ add_to_fridge: false, memo: newMemo })
-              .eq('id', purchaseItemMap[tid])
-          }
-        }
-      }
+        })
 
-      if (failedItems.length > 0) {
-        const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
-        alert(`以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`)
-      } else {
-        onSaved()
-      }
-      onClose()
+      // 非食用品（修正原有 ({ item }) 解构错误）
+      itemsWithTempId
+        .filter((item) => item.add_to_fridge && item.stock_type === 'daily')
+        .forEach(item => {
+          const tid = item._tempId
+          inventoryItems.push({
+            tempId: `daily_${tid}`,
+            name: item.name_zh,
+            type: '非食用品',
+            table: 'daily_items',
+            data: {
+              name_zh: item.name_zh,
+              name_original: item.name_original || null,
+              category: item.category || null,
+              quantity: Number(item.quantity) || 1,
+              unit: item.unit || '个',
+              location: 'home',
+              memo: item.memo || null,
+              purchase_item_id: purchaseItemMap[tid] || null
+            },
+            purchaseItemId: purchaseItemMap[tid] || null
+          })
+        })
+
+      // 保存到 state，打开 StorageResultModal
+      setManualStorageItems(inventoryItems)
+      setShowManualStorageResult(true)
     } catch (e) {
       console.error('保存异常：', e)
       alert('保存失败：' + e.message)
+      setSaving(false)
     }
-    setSaving(false)
+  }
+
+  function onManualStorageFinish({ failedItems }) {
+    setShowManualStorageResult(false)
+    if (!failedItems || failedItems.length === 0) {
+      onSaved()
+      onClose()
+    } else {
+      const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
+      alert(`以下 ${failedItems.length} 件商品重试后仍入库失败，已标记为未入库并在备注中记录：\n\n${detail}`)
+      onSaved()
+      onClose()
+    }
   }
 
   return (
+    <>
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000
@@ -725,6 +933,13 @@ function ManualReceiptModal({ onClose, onSaved }) {
         }}>{saving ? '保存中...' : '保存小票'}</button>
       </div>
     </div>
+    {showManualStorageResult && (
+      <StorageResultModal
+        storageItems={manualStorageItems}
+        onFinish={onManualStorageFinish}
+      />
+    )}
+    </>
   )
 }
 
@@ -820,6 +1035,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       const names = h.purchase_items?.filter(i => i.add_to_fridge).map(i => i.name_zh) || []
       for (const name of names) {
         await supabase.from('ingredients').delete().eq('name_zh', name)
+        await supabase.from('daily_items').delete().eq('name_zh', name)
       }
     }
     await supabase.from('purchase_history').delete().eq('id', h.id)
@@ -864,12 +1080,13 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     }
 
     if (!errorMessage && showAddItems && newItems.length > 0) {
-      const validNew = newItems.filter(item => item.name_zh.trim())
-      if (validNew.length > 0) {
-        const itemsWithTempId = validNew.map((item, i) => ({ ...item, _tempId: i }))
+      try {
+        const validNew = newItems.filter(item => item.name_zh.trim())
+        if (validNew.length > 0) {
+          const itemsWithTempId = validNew.map((item, i) => ({ ...item, _tempId: i }))
 
-        const historyItems = itemsWithTempId.map(item => ({
-          history_id: editingHistory.id,
+          const historyItems = itemsWithTempId.map(item => ({
+            history_id: editingHistory.id,
           name_zh: item.name_zh,
           name_original: item.name_original || null,
           category: item.category || null,
@@ -900,7 +1117,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
         // 逐条插入食用品库存，失败时标记
         const foodItems = itemsWithTempId
-          .filter(({ item }) => item.add_to_fridge && (item.stock_type || 'food') === 'food')
+          .filter(item => item.add_to_fridge && (item.stock_type || 'food') === 'food')
         for (const item of foodItems) {
           const tid = item._tempId
           try {
@@ -930,7 +1147,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
         // 逐条插入非食用品库存，失败时标记
         const dailyItems = itemsWithTempId
-          .filter(({ item }) => item.add_to_fridge && item.stock_type === 'daily')
+          .filter(item => item.add_to_fridge && item.stock_type === 'daily')
         for (const item of dailyItems) {
           const tid = item._tempId
           try {
@@ -964,6 +1181,9 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           const detail = failedItems.map(f => `・${f.name}（${f.type}）: ${f.error}`).join('\n')
           errorMessage = `以下 ${failedItems.length} 件商品入库失败，已标记为未入库：\n\n${detail}`
         }
+      }
+      } catch (e) {
+        errorMessage = '追加商品入库失败：' + e.message
       }
     }
 
@@ -1088,16 +1308,25 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     const syncedItem = updatedItem || savedItem
 
     if (syncToIngredients) {
-      const { error: ingredientError } = await supabase.from('ingredients').update({
+      // 根据分类判断同步到哪个库存表
+      const isDaily = isDailyCategory(syncedItem.category)
+      const table = isDaily ? 'daily_items' : 'ingredients'
+      const updateData = {
         name_zh: syncedItem.name_zh,
         category: syncedItem.category,
         quantity: Number(syncedItem.quantity) || 1,
         unit: syncedItem.unit,
-        expiry_date: syncedItem.expiry_date || null,
         memo: syncedItem.memo || null,
-      }).eq('purchase_item_id', syncedItem.id)
-      if (ingredientError) {
-        alert('同步到物品库存失败：' + ingredientError.message)
+      }
+      if (!isDaily) {
+        updateData.expiry_date = syncedItem.expiry_date || null
+      }
+      const { error: syncError } = await supabase
+        .from(table)
+        .update(updateData)
+        .eq('purchase_item_id', syncedItem.id)
+      if (syncError) {
+        alert('同步到库存失败：' + syncError.message)
         return
       }
     }
