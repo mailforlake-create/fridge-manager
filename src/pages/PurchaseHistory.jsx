@@ -1449,15 +1449,20 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 }}>×</button>
               )}
             </div>
-            <button onClick={() => document.getElementById('purchase-date-input').showPicker?.() || document.getElementById('purchase-date-input').click()}
-              style={{
-                width: 42, flexShrink: 0, borderRadius: 10, fontSize: 18,
+            <div style={{ position: 'relative', width: 42, flexShrink: 0 }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: 10, fontSize: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
                 border: dateFilter ? '1.5px solid #16a34a' : '1.5px solid #e2e8f0',
-                background: dateFilter ? '#f0fdf4' : '#fff', cursor: 'pointer'
-              }}>📅</button>
-            <input id="purchase-date-input" type="date" value={dateFilter}
-              onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
-              style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+                background: dateFilter ? '#f0fdf4' : '#fff'
+              }}>📅</div>
+              <input type="date" value={dateFilter}
+                onChange={e => { setDateFilter(e.target.value); setCollapsedYears({}); setCollapsedMonths({}) }}
+                style={{
+                  position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%',
+                  cursor: 'pointer', border: 'none', fontSize: 16
+                }} />
+            </div>
             {dateFilter && (
               <button onClick={() => setDateFilter('')}
                 style={{
