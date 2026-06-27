@@ -77,19 +77,27 @@ function StorageResultModal({ storageItems, onFinish }) {
     storageItems.forEach(item => { r[item.tempId] = 'pending' })
     return r
   })
-  // stockInfo: { [tempId]: { beforeQty: 5, insertQty: 2, afterQty: 7 } }
-  const [stockInfo, setStockInfo] = useState({})
+  // summaryInfo: { totalBefore, totalInsert, totalAfter }
+  const [summaryInfo, setSummaryInfo] = useState(null)
   const [phaseText, setPhaseText] = useState('正在逐条入库...')
   const [done, setDone] = useState(false)
   const runningRef = useRef(false)
 
-  // 查询某个物品在当前表中的库存总量
-  async function queryCurrentStock(table, nameZh) {
-    try {
-      const { data } = await supabase.from(table).select('quantity')
-      const matched = (data || []).filter(r => r.name_zh === nameZh)
-      return matched.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)
-    } catch { return '?' }
+  // 查询各表中未消耗的总件数（不含已消耗）
+  async function queryStockByTable() {
+    const result = { ingredients: 0, daily_items: 0 }
+    for (const table of ['ingredients', 'daily_items']) {
+      try {
+        const { data } = await supabase.from(table).select('quantity, consumed_quantity')
+        // 统计"未消耗的物品件数"，与物品页面左上角逻辑一致
+        result[table] = (data || []).filter(r => {
+          const qty = Number(r.quantity) || 0
+          const consumed = Number(r.consumed_quantity) || 0
+          return qty > consumed
+        }).length
+      } catch { /* 忽略查询错误 */ }
+    }
+    return result
   }
 
   useEffect(() => {
@@ -103,13 +111,24 @@ function StorageResultModal({ storageItems, onFinish }) {
   async function runStorage() {
     finalFailedRef.current = []
 
-    // ---- 先查询每件物品的当前在库数量 ----
-    const initStock = {}
-    for (const item of storageItems) {
-      const qty = await queryCurrentStock(item.table, item.name)
-      initStock[item.tempId] = { beforeQty: qty, insertQty: Number(item.data.quantity) || 1 }
-    }
-    setStockInfo(initStock)
+    // ---- 先查询总库存（不含已消耗）----
+    const stockByTable = await queryStockByTable()
+    const insertFood = storageItems
+      .filter(item => item.table === 'ingredients')
+      .reduce((sum, item) => sum + (Number(item.data.quantity) || 1), 0)
+    const insertDaily = storageItems
+      .filter(item => item.table === 'daily_items')
+      .reduce((sum, item) => sum + (Number(item.data.quantity) || 1), 0)
+    setSummaryInfo({
+      foodBefore: stockByTable.ingredients,
+      foodInsert: insertFood,
+      foodAfter: stockByTable.ingredients + insertFood,
+      dailyBefore: stockByTable.daily_items,
+      dailyInsert: insertDaily,
+      dailyAfter: stockByTable.daily_items + insertDaily,
+      hasFood: insertFood > 0,
+      hasDaily: insertDaily > 0
+    })
 
     // ---- 第一轮：逐条入库 ----
     const firstFailed = []
@@ -125,20 +144,12 @@ function StorageResultModal({ storageItems, onFinish }) {
         if (verifyError) throw new Error('入库后验证查询失败: ' + verifyError.message)
         if (!verify || verify.length === 0) throw new Error('入库后未能在数据库中查询到该记录')
         setResults(r => ({ ...r, [item.tempId]: 'success' }))
-        setStockInfo(prev => ({
-          ...prev,
-          [item.tempId]: { ...prev[item.tempId], afterQty: (prev[item.tempId]?.beforeQty || 0) + (prev[item.tempId]?.insertQty || 1) }
-        }))
         if (item.purchaseItemId) {
           await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', item.purchaseItemId)
         }
       } catch (e) {
         firstFailed.push({ ...item, error: e.message })
         setResults(r => ({ ...r, [item.tempId]: 'failed' }))
-        setStockInfo(prev => ({
-          ...prev,
-          [item.tempId]: { ...prev[item.tempId], afterQty: '失败' }
-        }))
       }
     }
 
@@ -156,20 +167,12 @@ function StorageResultModal({ storageItems, onFinish }) {
           if (verifyError) throw new Error('重试后验证查询失败: ' + verifyError.message)
           if (!verify || verify.length === 0) throw new Error('重试后仍未在数据库中查询到该记录')
           setResults(r => ({ ...r, [item.tempId]: 'success' }))
-          setStockInfo(prev => ({
-            ...prev,
-            [item.tempId]: { ...prev[item.tempId], afterQty: (prev[item.tempId]?.beforeQty || 0) + (prev[item.tempId]?.insertQty || 1) }
-          }))
           if (item.purchaseItemId) {
             await supabase.from('purchase_items').update({ add_to_fridge: true }).eq('id', item.purchaseItemId)
           }
         } catch (e) {
           finalFailedRef.current.push({ name: item.name, type: item.type, error: e.message })
           setResults(r => ({ ...r, [item.tempId]: 'failed' }))
-          setStockInfo(prev => ({
-            ...prev,
-            [item.tempId]: { ...prev[item.tempId], afterQty: '失败' }
-          }))
           if (item.purchaseItemId) {
             try {
               const { data: existing } = await supabase
@@ -206,12 +209,29 @@ function StorageResultModal({ storageItems, onFinish }) {
         width: '100%', maxWidth: 430,
         position: 'relative', maxHeight: '90vh'
       }}>
-        <div style={{ padding: '20px 20px 12px' }}>
+        <div style={{ padding: '20px 20px 0' }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>📦 物品入库</div>
-          <div style={{ fontSize: 13, color: '#64748b' }}>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
             {phaseText}
             {!done && <span style={{ marginLeft: 8, fontSize: 12, color: '#94a3b8' }}>{successCount}/{totalCount}</span>}
           </div>
+          {summaryInfo && (
+            <div style={{
+              marginBottom: 10, padding: '8px 12px', borderRadius: 8,
+              background: '#f1f5f9', fontSize: 12, color: '#475569'
+            }}>
+              {summaryInfo.hasFood && (
+                <div style={{ marginBottom: summaryInfo.hasDaily ? 4 : 0 }}>
+                  🥦 食用品 — 入库前: <b>{summaryInfo.foodBefore}</b> ｜ 入库: <b>{summaryInfo.foodInsert}</b> ｜ 入库后: <b>{summaryInfo.foodAfter}</b>
+                </div>
+              )}
+              {summaryInfo.hasDaily && (
+                <div>
+                  🧴 非食用品 — 入库前: <b>{summaryInfo.dailyBefore}</b> ｜ 入库: <b>{summaryInfo.dailyInsert}</b> ｜ 入库后: <b>{summaryInfo.dailyAfter}</b>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{
@@ -236,11 +256,6 @@ function StorageResultModal({ storageItems, onFinish }) {
                     {item.name}
                   </div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.type}</div>
-                  {stockInfo[item.tempId] && (
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                      入库前: {stockInfo[item.tempId].beforeQty} | 入库: {stockInfo[item.tempId].insertQty} | 入库后: {stockInfo[item.tempId].afterQty ?? '...'}
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
