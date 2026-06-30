@@ -590,6 +590,12 @@ export default function Fridge() {
                 const currentYear = `${now.getFullYear()}年`
                 const currentMonth = `${now.getMonth() + 1}月`
                 const isFiltering = !!(search || filter !== 'all' || dateFilter)
+                // 找到有数据的最近月份
+                const allMonthKeys = []
+                Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).forEach(([year, months]) => {
+                  Object.keys(months).sort((a, b) => Number(b.replace('月','')) - Number(a.replace('月',''))).forEach(m => allMonthKeys.push(m))
+                })
+                const latestMonth = allMonthKeys.length > 0 ? allMonthKeys[0] : currentMonth
                 return Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, months]) => {
                   const yearItems = Object.values(months).flat()
                   const isYearCollapsed = collapsedYears[year] ?? (!isFiltering && year !== currentYear)
@@ -609,7 +615,7 @@ export default function Fridge() {
                         <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {Object.entries(months).sort(([a], [b]) => Number(b.replace('月','')) - Number(a.replace('月',''))).map(([month, monthItems]) => {
                             const monthKey = `${year}-${month}`
-                            const isMonthCollapsed = collapsedMonths[monthKey] ?? (!isFiltering && year === currentYear && month !== currentMonth)
+                            const isMonthCollapsed = month === latestMonth ? false : (collapsedMonths[monthKey] ?? !isFiltering)
 
                             return (
                               <div key={month}>
