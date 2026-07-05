@@ -4,6 +4,8 @@ import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
 import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
+import { formatAmount } from '../lib/currency'
+import { toJPY } from '../lib/currency'
 
 function calcExpiry(mfgDate, shelfDays) {
   if (!mfgDate || !shelfDays) return ''
@@ -34,8 +36,8 @@ function ItemDetailModal({ item, onClose }) {
             ['原文名称', item.name_original],
             ['分类', item.category],
             ['数量', item.quantity && item.unit ? `${item.quantity}${item.unit}` : null],
-            ['实付价格', item.price ? `¥${item.price}` : null],
-            ['原价', item.original_price ? `¥${item.original_price}` : null],
+            ['实付价格', item.price ? formatAmount(item.price, settings) : null],,
+            ['原价', item.original_price ? formatAmount(item.original_price, settings) : null],
             ['折扣说明', item.discount_info],
             ['过期日期', item.expiry_date],
             ['备注', item.memo],
@@ -284,6 +286,7 @@ function StorageResultModal({ storageItems, onFinish }) {
 
 
 function ReceiptScanModal({ onClose, onSaved }) {
+  const [currency, setCurrency] = useState('JPY')
   const [aiItems, setAiItems] = useState([])
   const [selected, setSelected] = useState({})
   const [receiptData, setReceiptData] = useState(null)
@@ -337,14 +340,19 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function save() {
     setSaving(true)
     try {
-      const { data: history } = await supabase
-        .from('purchase_history')
-        .insert({
-          store_name: storeName || receiptData?.store_name || '未知商家',
-          store_name_original: storeNameOriginal || receiptData?.store_name_original || null,
-          purchased_at: purchasedAt || receiptData?.purchased_at || null,
-          total_amount: totalAmount || receiptData?.total_amount || null
-        }).select().single()
+        const originalAmount = receiptData.total_amount || null
+        const jpyAmount = currency === 'JPY' ? originalAmount : toJPY(originalAmount, currency, settings)
+
+        const { data: history } = await supabase
+          .from('purchase_history')
+          .insert({
+            store_name: receiptData.store_name || '未知商家',
+            store_name_original: receiptData.store_name_original || null,
+            purchased_at: receiptData.purchased_at || null,
+            total_amount: jpyAmount,
+            original_amount: currency !== 'JPY' ? originalAmount : null,
+            currency: currency
+          }).select().single()
 
       if (history) {
         // 给每个 item 加临时 id，用于后续可靠映射
@@ -512,8 +520,17 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                   <input style={smallField} type="number" value={totalAmount}
                     onChange={e => setTotalAmount(e.target.value)} placeholder="可选" />
                 </div>
-              </div>
+              </div>              
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: '#475569' }}>录入货币</div>
+                <select value={currency} onChange={e => setCurrency(e.target.value)}
+                  style={{ padding: '5px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none' }}>
+                  {(settings.exchange_rates || []).map(r => (
+                    <option key={r.to} value={r.to}>{r.label}（{r.to}）</option>
+                  ))}
+                </select>
+              </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
@@ -572,7 +589,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                         {item.price && (
                           <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
                             {item.is_discount && <span style={{ color: '#ef4444' }}>折扣 </span>}
-                            ¥{item.price}
+                            {formatAmount(item.price, settings)}
                           </span>
                         )}
                       </div>
@@ -959,6 +976,7 @@ function ManualReceiptModal({ onClose, onSaved }) {
 }
 
 export default function PurchaseHistory() {
+  const { settings, saveSetting } = useSettings()
   const [showAddItems, setShowAddItems] = useState(false)
   const [newItems, setNewItems] = useState([])
   const [showManualAdd, setShowManualAdd] = useState(false)
@@ -977,7 +995,6 @@ export default function PurchaseHistory() {
   const [syncToIngredients, setSyncToIngredients] = useState(true)
   const [syncToDining, setSyncToDining] = useState(true)
   const [syncDeleteStock, setSyncDeleteStock] = useState(true)
-  const { settings } = useSettings()
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
 const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
@@ -1419,12 +1436,21 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
       {mainTab === 'purchase' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧾 购物履历</h1>
-            <span style={{ fontSize: 13, color: '#94a3b8' }}>
-              共 {history.length} 张小票
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700 }}>🧾 购物履历</h1>
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {history.length} 张小票</span>
+            </div>
+            <select
+              value={settings.display_currency || 'JPY'}
+              onChange={async e => await saveSetting('display_currency', e.target.value)}
+              style={{ padding: '4px 8px', borderRadius: 7, fontSize: 12, border: '1px solid #e2e8f0', color: '#475569', background: '#fff' }}>
+              {(settings.exchange_rates || []).map(r => (
+                <option key={r.to} value={r.to}>{r.symbol} {r.to}</option>
+              ))}
+            </select>
           </div>
+          
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             <button onClick={() => setShowManualAdd(true)} style={{
               padding: '10px 0', borderRadius: 10, background: '#f0fdf4',
@@ -1885,7 +1911,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           {yearTotal > 0 && (
-                            <span style={{ fontSize: 14, fontWeight: 700, color: '#16a34a' }}>¥{yearTotal.toLocaleString()}</span>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: '#16a34a' }}>{formatAmount(yearTotal, settings)}</span>
                           )}
                           <span style={{ fontSize: 14, color: '#94a3b8' }}>{isYearCollapsed ? '▼' : '▲'}</span>
                         </div>
@@ -1908,7 +1934,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                     {monthTotal > 0 && (
-                                      <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a' }}>¥{monthTotal.toLocaleString()}</span>
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a' }}>{formatAmount(monthTotal, settings)}</span>
                                     )}
                                     <span style={{ fontSize: 13, color: '#94a3b8' }}>{isMonthCollapsed ? '▼' : '▲'}</span>
                                   </div>
@@ -1939,7 +1965,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                                               </div>
                                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                                                 {h.total_amount && (
-                                                  <div style={{ fontWeight: 700, color: '#16a34a' }}>¥{h.total_amount}</div>
+                                                  <div style={{ fontWeight: 700, color: '#16a34a' }}>{formatAmount(h.total_amount, settings)}</div>
                                                 )}
                                                 <button onClick={() => setEditingHistory({ ...h })} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
                                                 <button onClick={() => confirmDeleteHistory(h)} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
@@ -1979,9 +2005,9 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                                                         {item.quantity}{item.unit}
                                                         {item.price && (
                                                           <span style={{ marginLeft: 6, color: item.is_discount ? '#ef4444' : '#475569', fontWeight: 600 }}>
-                                                            ¥{item.price}
+                                                            {formatAmount(item.price, settings)}
                                                             {item.is_discount && item.original_price && (
-                                                              <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: 11, marginLeft: 4 }}>¥{item.original_price}</span>
+                                                              <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: 11, marginLeft: 4 }}>{formatAmount(item.original_price, settings)}</span>
                                                             )}
                                                           </span>
                                                         )}

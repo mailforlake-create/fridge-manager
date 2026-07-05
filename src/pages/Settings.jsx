@@ -266,6 +266,88 @@ export default function Settings() {
             </div>
           </div>
         ))}
+
+        {/* 货币设置 */}
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+          <div style={{ padding: '11px 14px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>💱</span>
+            <span style={{ fontWeight: 600, fontSize: 14, color: '#334155' }}>货币设置</span>
+          </div>
+          <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            
+            {/* 显示货币选择 */}
+            <div>
+              <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>显示货币</div>
+              <select
+                value={localSettings.display_currency || 'JPY'}
+                onChange={e => update('display_currency', e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none' }}>
+                {(localSettings.exchange_rates || []).map(r => (
+                  <option key={r.to} value={r.to}>{r.label}（{r.to}）</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 汇率列表 */}
+            <div>
+              <div style={{ fontSize: 13, color: '#475569', fontWeight: 600, marginBottom: 8 }}>汇率维护（基准：JPY）</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(localSettings.exchange_rates || []).map((rate, i) => (
+                  <div key={i} style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                        {rate.label}（{rate.to}）
+                      </span>
+                      {rate.to !== 'JPY' && (
+                        <button
+                          onClick={() => {
+                            const newRates = (localSettings.exchange_rates || []).filter((_, j) => j !== i)
+                            update('exchange_rates', newRates)
+                          }}
+                          style={{ background: '#fef2f2', color: '#ef4444', fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+                          删除
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>1 JPY =</span>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={rate.rate}
+                        disabled={rate.to === 'JPY'}
+                        onChange={e => {
+                          const newRates = [...(localSettings.exchange_rates || [])]
+                          newRates[i] = { ...newRates[i], rate: Number(e.target.value) }
+                          update('exchange_rates', newRates)
+                        }}
+                        style={{ flex: 1, padding: '6px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none', background: rate.to === 'JPY' ? '#f1f5f9' : '#fff' }} />
+                      <input
+                        value={rate.symbol}
+                        onChange={e => {
+                          const newRates = [...(localSettings.exchange_rates || [])]
+                          newRates[i] = { ...newRates[i], symbol: e.target.value }
+                          update('exchange_rates', newRates)
+                        }}
+                        placeholder="符号"
+                        style={{ width: 40, padding: '6px 8px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none', textAlign: 'center' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  const newRates = [...(localSettings.exchange_rates || []), { to: '', label: '', rate: 0.01, symbol: '' }]
+                  update('exchange_rates', newRates)
+                }}
+                style={{ marginTop: 10, width: '100%', padding: '8px 0', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600, border: '1px dashed #cbd5e1' }}>
+                + 添加货币
+              </button>
+            </div>
+          </div>
+        </div>     
+        
+          
         {/* AI 配置 */}
         <div style={{
         background: '#fff', borderRadius: 12,

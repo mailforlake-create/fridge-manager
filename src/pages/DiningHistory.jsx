@@ -4,6 +4,7 @@ import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
+import { formatAmount } from '../lib/currency'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [activeIngredientId, setActiveIngredientId] = useState(null)
@@ -1120,6 +1121,7 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
 }
 
 function AddDiningModal({ onClose, onSaved }) {
+  const [outCurrency, setOutCurrency] = useState('JPY')
   const { settings } = useSettings()
   const[diningType, setDiningType] = useState(null)
   const [mealTime, setMealTime] = useState(null)
@@ -1279,6 +1281,9 @@ function AddDiningModal({ onClose, onSaved }) {
     setSaveText('保存数据中...')
 
     try {
+      const originalAmount = amount ? Number(amount) : null
+      const jpyAmount = outCurrency === 'JPY' ? originalAmount : toJPY(originalAmount, outCurrency, settings)
+
       const { data: dining } = await supabase.from('dining_history').insert({
         dining_type: diningType,
         meal_time: mealTime || null,
@@ -1286,7 +1291,9 @@ function AddDiningModal({ onClose, onSaved }) {
         dined_time: diningType === 'out' ? (dinedTime || null) : null,
         store_name: diningType === 'out' ? storeName : null,
         store_name_original: diningType === 'out' ? storeNameOriginal : null,
-        amount: diningType === 'out' && amount ? Number(amount) : null,
+        amount: jpyAmount,
+        original_amount: diningType === 'out' && outCurrency !== 'JPY' ? originalAmount : null,
+        currency: diningType === 'out' ? outCurrency : 'JPY',
         home_cost: diningType === 'home' && totalHomeCost > 0 ? Math.round(totalHomeCost * 10) / 10 : null,
         memo: memo || null
       }).select().single()
@@ -1569,7 +1576,16 @@ function AddDiningModal({ onClose, onSaved }) {
                 <input style={{ ...field, flex: 1 }} type="date" value={dinedAt} onChange={e => setDinedAt(e.target.value)} />
                 <input style={{ ...field, flex: 1 }} type="time" value={dinedTime} onChange={e => setDinedTime(e.target.value)} />
               </div>
-              <input style={field} type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="金额（¥）*" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={outCurrency} onChange={e => setOutCurrency(e.target.value)}
+                  style={{ padding: '10px 8px', borderRadius: 10, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff' }}>
+                  {(settings.exchange_rates || []).map(r => (
+                    <option key={r.to} value={r.to}>{r.symbol} {r.to}</option>
+                  ))}
+                </select>
+                <input style={{ ...field, flex: 1 }} type="number" value={amount}
+                  onChange={e => setAmount(e.target.value)} placeholder="金额*" />
+              </div>
             </div>
           </>
         )}
@@ -1680,6 +1696,7 @@ function AddDiningModal({ onClose, onSaved }) {
 }
 
 export default function DiningHistory() {
+  const { settings, saveSetting } = useSettings()
   const[records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -1872,7 +1889,17 @@ export default function DiningHistory() {
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>🍽️ 餐饮履历</h1>
           <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {filtered.length} 条</span>
         </div>
-        <button onClick={() => setShowAdd(true)} style={{ padding: '7px 16px', borderRadius: 10, background: '#f97316', color: '#fff', fontSize: 14, fontWeight: 600 }}>+ 记录</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select
+            value={settings.display_currency || 'JPY'}
+            onChange={async e => await saveSetting('display_currency', e.target.value)}
+            style={{ padding: '4px 8px', borderRadius: 7, fontSize: 12, border: '1px solid #e2e8f0', color: '#475569', background: '#fff' }}>
+            {(settings.exchange_rates || []).map(r => (
+              <option key={r.to} value={r.to}>{r.symbol} {r.to}</option>
+            ))}
+          </select>
+          <button onClick={() => setShowAdd(true)} style={{ padding: '7px 16px', borderRadius: 10, background: '#f97316', color: '#fff', fontSize: 14, fontWeight: 600 }}>+ 记录</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
@@ -1950,8 +1977,8 @@ export default function DiningHistory() {
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{yearRecords.length} 条</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {yearHomeTotal > 0 && <span style={{ fontSize: 12, color: '#16a34a' }}>自炊 ¥{yearHomeTotal.toFixed(0)}</span>}
-                    {yearOutTotal > 0 && <span style={{ fontSize: 12, color: '#f97316' }}>外食 ¥{yearOutTotal.toLocaleString()}</span>}
+                    {yearHomeTotal > 0 && <span style={{ fontSize: 12, color: '#16a34a' }}>自炊 {formatAmount(yearHomeTotal, settings)}</span>}
+                    {yearOutTotal > 0 && <span style={{ fontSize: 12, color: '#f97316' }}>外食 {formatAmount(yearOutTotal, settings)}</span>}
                     <span style={{ fontSize: 14, color: '#94a3b8' }}>{isYearCollapsed ? '▼' : '▲'}</span>
                   </div>
                 </div>
@@ -1974,8 +2001,8 @@ export default function DiningHistory() {
                               <span style={{ fontSize: 12, color: '#94a3b8' }}>{monthRecords.length} 条</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              {monthHomeTotal > 0 && <span style={{ fontSize: 12, color: '#16a34a' }}>自炊 ¥{monthHomeTotal.toFixed(0)}</span>}
-                              {monthOutTotal > 0 && <span style={{ fontSize: 12, color: '#f97316' }}>外食 ¥{monthOutTotal.toLocaleString()}</span>}
+                              {monthHomeTotal > 0 && <span style={{ fontSize: 12, color: '#16a34a' }}>自炊 {formatAmount(monthHomeTotal, settings)}</span>}
+                              {monthOutTotal > 0 && <span style={{ fontSize: 12, color: '#f97316' }}>外食 {formatAmount(monthOutTotal, settings)}</span>}
                               <span style={{ fontSize: 13, color: '#94a3b8' }}>{isMonthCollapsed ? '▼' : '▲'}</span>
                             </div>
                           </div>
@@ -2011,12 +2038,12 @@ export default function DiningHistory() {
                                                 <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
                                                   🏪 {r.store_name}
                                                   {r.dined_time && <span style={{ marginLeft: 6, color: '#94a3b8' }}>⏰ {r.dined_time}</span>}
-                                                  {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>¥{r.amount}</span>}
+                                                  {r.amount && <span style={{ marginLeft: 8, fontWeight: 600, color: '#f97316' }}>{formatAmount(r.amount, settings)}</span>}
                                                 </div>
                                               )}
                                               {r.dining_type === 'home' && displayHomeCost > 0 && (
                                                 <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 4 }}>
-                                                  成本 ¥{displayHomeCost.toFixed(1)}
+                                                  成本 {formatAmount(displayHomeCost, settings)}
                                                 </div>
                                               )}
                                               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
@@ -2068,14 +2095,14 @@ export default function DiningHistory() {
                                                         <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
                                                         {item.price && (
                                                           <div style={{ fontWeight: 600, color: '#f97316' }}>
-                                                            {item.quantity > 1 && <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>¥{item.price}×{item.quantity}</span>}
-                                                            ¥{(Number(item.price) * Number(item.quantity)).toFixed(0)}
+                                                            {item.quantity > 1 && <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>{formatAmount(item.price, settings)}×{item.quantity}</span>}
+                                                            {formatAmount(Number(item.price) * Number(item.quantity), settings)}
                                                           </div>
                                                         )}
                                                       </>
                                                     )}
                                                     {getDiningItemCost(item) > 0 && r.dining_type === 'home' && (
-                                                      <div style={{ fontSize: 11, color: '#16a34a' }}>¥{getDiningItemCost(item).toFixed(1)}</div>
+                                                      <div style={{ fontSize: 11, color: '#16a34a' }}>{formatAmount(getDiningItemCost(item), settings)}</div>
                                                     )}
                                                   </div>
                                                   <span style={{ fontSize: 16, color: '#94a3b8' }}>›</span>
