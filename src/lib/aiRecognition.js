@@ -17,7 +17,7 @@ export async function callAI(messages, aiConfig = {}) {
     },
     body: JSON.stringify({
       model_url: modelUrl,
-      max_tokens: Number(aiConfig.ai_max_tokens) || 16384,
+      max_tokens: Number(aiConfig.ai_max_tokens) || 100000,
       messages
     })
   })
@@ -112,7 +112,7 @@ export async function recognizeReceipt(file, categories = {}) {
     { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
     { type: 'text', text: prompt }
   ]
-}], { ...categories, ai_max_tokens: 16384 })  // ← 小票识别用更大的 token 限制
+}], { ...categories, ai_max_tokens: 100000 })  // ← 小票识别用更大的 token 限制
 
   let result = null
   try {
