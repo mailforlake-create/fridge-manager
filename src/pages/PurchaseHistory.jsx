@@ -21,6 +21,7 @@ const smallField = {
 }
 
 function ItemDetailModal({ item, onClose }) {
+  const { settings } = useSettings()
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
