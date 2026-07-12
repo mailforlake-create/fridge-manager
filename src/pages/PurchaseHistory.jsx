@@ -341,15 +341,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function save() {
     setSaving(true)
     try {
-        const originalAmount = receiptData.total_amount || null
+        const originalAmount = totalAmount !== '' ? Number(totalAmount) : null
         const jpyAmount = currency === 'JPY' ? originalAmount : toJPY(originalAmount, currency, settings)
 
         const { data: history } = await supabase
           .from('purchase_history')
           .insert({
-            store_name: receiptData.store_name || '未知商家',
-            store_name_original: receiptData.store_name_original || null,
-            purchased_at: receiptData.purchased_at || null,
+            store_name: storeName || '未知商家',
+            store_name_original: storeNameOriginal || null,
+            purchased_at: purchasedAt || null,
             total_amount: jpyAmount,
             original_amount: currency !== 'JPY' ? originalAmount : null,
             currency: currency
