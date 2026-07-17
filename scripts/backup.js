@@ -23,14 +23,20 @@ const TABLES = [
   'dining_history',
   'dining_items',
   'dining_photos',
+  'settings',
 ]
 
 async function fetchTable(tableName) {
-  const { data, error } = await supabase
-    .from(tableName)
-    .select('*')
-    .order('created_at', { ascending: true })
+  const query = supabase.from(tableName).select('*')
 
+  // settings 表用 key 排序，其他表用 created_at
+  if (tableName === 'settings') {
+    query.order('key', { ascending: true })
+  } else {
+    query.order('created_at', { ascending: true })
+  }
+
+  const { data, error } = await query
   if (error) {
     console.error(`  ✗ ${tableName}: ${error.message}`)
     return []

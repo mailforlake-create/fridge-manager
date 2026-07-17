@@ -23,6 +23,7 @@ const RESTORE_ORDER = [
   'ingredients',
   'purchase_items',
   'purchase_history',
+  'settings',
 ]
 
 const INSERT_ORDER = RESTORE_ORDER.slice().reverse()
@@ -40,10 +41,15 @@ async function restore(backupPath) {
   // 按顺序清空表
   console.log('清空现有数据...')
   for (const table of RESTORE_ORDER) {
-    const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    if (error) console.error(`  ✗ 清空 ${table}: ${error.message}`)
-    else console.log(`  ✓ 清空 ${table}`)
-  }
+  // settings 表主键是 key，用不同的清空条件
+  const deleteQuery = table === 'settings'
+    ? supabase.from(table).delete().neq('key', '')
+    : supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
+
+  const { error } = await deleteQuery
+  if (error) console.error(`  ✗ 清空 ${table}: ${error.message}`)
+  else console.log(`  ✓ 清空 ${table}`)
+}
 
   // 按顺序插入数据
   console.log('\n插入备份数据...')

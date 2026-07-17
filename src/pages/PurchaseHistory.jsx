@@ -375,7 +375,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           memo: item.memo || null,
         }))
 
-        const { data: savedItems } = await supabase.from('purchase_items').insert(historyItems).select()
+        const savedItems = []
+          for (const historyItem of historyItems) {
+            const { data } = await supabase
+              .from('purchase_items')
+              .insert(historyItem)
+              .select()
+              .single()
+            savedItems.push(data)
+          }
 
         // 使用 name_zh + history_id 进行映射，避免数组索引错位
         const purchaseItemMap = {}
@@ -716,10 +724,15 @@ function ManualReceiptModal({ onClose, onSaved }) {
         add_to_fridge: item.add_to_fridge && item.category !== '非食材'
       }))
 
-      const { data: savedItems, error: itemsError } = await supabase
-        .from('purchase_items')
-        .insert(historyItems)
-        .select()
+      const savedItems = []
+        for (const historyItem of historyItems) {
+          const { data } = await supabase
+            .from('purchase_items')
+            .insert(historyItem)
+            .select()
+            .single()
+          savedItems.push(data)
+        }
 
       if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
 
