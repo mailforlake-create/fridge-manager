@@ -116,12 +116,13 @@ function StorageResultModal({ storageItems, onFinish }) {
 
     // ---- 先查询总库存（不含已消耗）----
     const stockByTable = await queryStockByTable()
+    // 统计条目数：一个条目个数为多个时按 1 计算
     const insertFood = storageItems
       .filter(item => item.table === 'ingredients')
-      .reduce((sum, item) => sum + (Number(item.data.quantity) || 1), 0)
+      .length
     const insertDaily = storageItems
       .filter(item => item.table === 'daily_items')
-      .reduce((sum, item) => sum + (Number(item.data.quantity) || 1), 0)
+      .length
     setSummaryInfo({
       foodBefore: stockByTable.ingredients,
       foodInsert: insertFood,
