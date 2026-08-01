@@ -1021,11 +1021,35 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   async function fetchHistory() {
     setLoading(true)
-    const { data } = await supabase
+    // 拆嵌套：先查主表（裁剪无用字段），再用 IN 批量查明细（走 idx_purchase_items_history_id 索引）
+    const { data: historyData, error } = await supabase
       .from('purchase_history')
-      .select(`*, purchase_items(*)`)
+      .select('id, store_name, store_name_original, purchased_at, created_at, total_amount, currency, original_amount')
       .order('purchased_at', { ascending: false, nullsFirst: false })
-    setHistory(data || [])
+
+    if (error) {
+      console.warn('Failed to fetch purchase history:', error)
+      setHistory([])
+      setLoading(false)
+      return
+    }
+
+    const records = historyData || []
+    const itemsByHistoryId = new Map()
+    if (records.length) {
+      const historyIds = records.map(r => r.id)
+      const { data: items } = await supabase
+        .from('purchase_items')
+        .select('*')
+        .in('history_id', historyIds)
+      ;(items || []).forEach(item => {
+        const list = itemsByHistoryId.get(item.history_id) || []
+        list.push(item)
+        itemsByHistoryId.set(item.history_id, list)
+      })
+    }
+
+    setHistory(records.map(r => ({ ...r, purchase_items: itemsByHistoryId.get(r.id) || [] })))
     setLoading(false)
   }
 

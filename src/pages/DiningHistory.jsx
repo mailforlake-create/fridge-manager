@@ -1717,32 +1717,76 @@ export default function DiningHistory() {
 
   useEffect(() => { fetchRecords() },[])
 
+  // 只查渲染真正用到的字段，避免全量拉取大文本列
+  const DINING_HISTORY_SELECT = 'id, dining_type, meal_time, dined_at, dined_time, store_name, store_name_original, amount, home_cost, memo, created_at'
+  const DINING_ITEM_SELECT = 'id, dining_id, name_zh, name_original, category, quantity, unit, price, consumed_quantity, ingredient_id, update_consumed, price_contribution, memo'
+
+  // 拆 3 层嵌套为 2 次扁平批量查询（走 IN 索引），再按 record 结构组装回
+  async function hydrateDiningItems(records) {
+    if (!records?.length) return records || []
+    const diningIds = records.map(r => r.id)
+
+    const { data: items } = await supabase
+      .from('dining_items')
+      .select(DINING_ITEM_SELECT)
+      .in('dining_id', diningIds)
+
+    const itemsByDiningId = new Map()
+    ;(items || []).forEach(item => {
+      const list = itemsByDiningId.get(item.dining_id) || []
+      list.push(item)
+      itemsByDiningId.set(item.dining_id, list)
+    })
+
+    const ingredientIds = [...new Set((items || []).map(i => i.ingredient_id).filter(Boolean))]
+    const ingredientById = new Map()
+    if (ingredientIds.length) {
+      const { data: ings } = await supabase
+        .from('ingredients')
+        .select('id, quantity, purchase_item:purchase_item_id(price)')
+        .in('id', ingredientIds)
+      ;(ings || []).forEach(ing => ingredientById.set(String(ing.id), ing))
+    }
+
+    return records.map(r => {
+      const dItems = itemsByDiningId.get(r.id) || []
+      return {
+        ...r,
+        dining_items: dItems.map(item => ({
+          ...item,
+          ingredient: item.ingredient_id ? (ingredientById.get(String(item.ingredient_id)) || null) : null
+        }))
+      }
+    })
+  }
+
   async function fetchRecords() {
     setLoading(true)
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('dining_history')
-      .select(`*, dining_items(*, ingredient:ingredient_id(quantity, purchase_item:purchase_item_id(price)))`)
+      .select(DINING_HISTORY_SELECT)
       .order('dined_at', { ascending: false })
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.warn('Failed to fetch dining ingredient costs:', error)
-      const fallback = await supabase
-        .from('dining_history')
-        .select(`*, dining_items(*)`)
-        .order('dined_at', { ascending: false })
-        .order('created_at', { ascending: false })
-      data = fallback.data
+      console.warn('Failed to fetch dining records:', error)
+      setRecords([])
+      setLoading(false)
+      return
     }
 
-    setRecords(data ||[])
-    if (data?.length) await fetchPhotos(data.map(r => r.id))
+    const enriched = await hydrateDiningItems(data || [])
+    setRecords(enriched)
+    if (enriched?.length) await fetchPhotos(enriched.map(r => r.id))
     setLoading(false)
   }
 
   async function fetchPhotos(diningIds) {
     if (!diningIds.length) return
-    const { data } = await supabase.from('dining_photos').select('*').in('dining_id', diningIds)
+    const { data } = await supabase
+      .from('dining_photos')
+      .select('id, dining_id, dining_item_id, file_path, url')
+      .in('dining_id', diningIds)
     if (!data) return
     const map = {}
     data.forEach(p => {
