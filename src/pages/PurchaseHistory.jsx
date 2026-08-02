@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, batchFetchIn } from '../lib/supabase'
 import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
 import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
@@ -1038,10 +1038,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     const itemsByHistoryId = new Map()
     if (records.length) {
       const historyIds = records.map(r => r.id)
-      const { data: items } = await supabase
-        .from('purchase_items')
-        .select('*')
-        .in('history_id', historyIds)
+      const items = await batchFetchIn('purchase_items', 'history_id', historyIds, '*')
       ;(items || []).forEach(item => {
         const list = itemsByHistoryId.get(item.history_id) || []
         list.push(item)

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, batchFetchIn } from '../lib/supabase'
 import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
@@ -254,26 +254,19 @@ function clampIngredientQty(ingredient, qty, min = 0) {
 
 async function fetchIngredientsByIds(ids) {
   if (ids.length === 0) return []
-  const { data } = await supabase
-    .from('ingredients')
-    .select('*')
-    .in('id', ids)
-  return data || []
+  return batchFetchIn('ingredients', 'id', ids, '*')
 }
 
 async function hydrateLatestPurchasePrices(ingredients) {
   const purchaseItemIds = [...new Set((ingredients || []).map(i => i.purchase_item_id).filter(Boolean))]
   if (!purchaseItemIds.length) return ingredients || []
 
-  const { data } = await supabase
-    .from('purchase_items')
-    .select(`
-      id,
-      price,
-      original_price,
-      purchase_history:history_id(store_name, purchased_at)
-    `)
-    .in('id', purchaseItemIds)
+  const data = await batchFetchIn('purchase_items', 'id', purchaseItemIds, `
+    id,
+    price,
+    original_price,
+    purchase_history:history_id(store_name, purchased_at)
+  `)
 
   const purchaseItemById = new Map((data || []).map(item => [String(item.id), item]))
   return (ingredients || []).map(ingredient => {
@@ -1721,15 +1714,12 @@ export default function DiningHistory() {
   const DINING_HISTORY_SELECT = 'id, dining_type, meal_time, dined_at, dined_time, store_name, store_name_original, amount, home_cost, memo, created_at'
   const DINING_ITEM_SELECT = 'id, dining_id, name_zh, name_original, category, quantity, unit, price, consumed_quantity, ingredient_id, update_consumed, price_contribution, memo'
 
-  // 拆 3 层嵌套为 2 次扁平批量查询（走 IN 索引），再按 record 结构组装回
+  // 拆 3 层嵌套为 2 次扁平批量查询（走 IN 索引 + 分批规避 URL 长度限制），再按 record 结构组装回
   async function hydrateDiningItems(records) {
     if (!records?.length) return records || []
     const diningIds = records.map(r => r.id)
 
-    const { data: items } = await supabase
-      .from('dining_items')
-      .select(DINING_ITEM_SELECT)
-      .in('dining_id', diningIds)
+    const items = await batchFetchIn('dining_items', 'dining_id', diningIds, DINING_ITEM_SELECT)
 
     const itemsByDiningId = new Map()
     ;(items || []).forEach(item => {
@@ -1741,10 +1731,7 @@ export default function DiningHistory() {
     const ingredientIds = [...new Set((items || []).map(i => i.ingredient_id).filter(Boolean))]
     const ingredientById = new Map()
     if (ingredientIds.length) {
-      const { data: ings } = await supabase
-        .from('ingredients')
-        .select('id, quantity, purchase_item:purchase_item_id(price)')
-        .in('id', ingredientIds)
+      const ings = await batchFetchIn('ingredients', 'id', ingredientIds, 'id, quantity, purchase_item:purchase_item_id(price)')
       ;(ings || []).forEach(ing => ingredientById.set(String(ing.id), ing))
     }
 
@@ -1783,10 +1770,7 @@ export default function DiningHistory() {
 
   async function fetchPhotos(diningIds) {
     if (!diningIds.length) return
-    const { data } = await supabase
-      .from('dining_photos')
-      .select('id, dining_id, dining_item_id, file_path, url')
-      .in('dining_id', diningIds)
+    const data = await batchFetchIn('dining_photos', 'dining_id', diningIds, 'id, dining_id, dining_item_id, file_path, url')
     if (!data) return
     const map = {}
     data.forEach(p => {
