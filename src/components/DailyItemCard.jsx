@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 //import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 import ConfirmModal from './ConfirmModal'
+import { formatAmount } from '../lib/currency'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const { settings } = useSettings()
@@ -160,11 +161,37 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
             {item.category || '未分类'}
             {item.memo && ` · ${item.memo}`}
           </div>
-          {item.purchase_item?.purchase_history?.store_name && (
+          {item.purchase_item && (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+              {item.purchase_item.price ? (
+                item.purchase_item.is_discount ? (
+                  <span>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>{formatAmount(item.purchase_item.price, settings)}</span>
+                    {item.purchase_item.original_price && (
+                      <span style={{ textDecoration: 'line-through', marginLeft: 4 }}>
+                        {formatAmount(item.purchase_item.original_price, settings)}
+                      </span>
+                    )}
+                    {item.purchase_item.discount_info && (
+                      <span style={{ color: '#ef4444', marginLeft: 4 }}>{item.purchase_item.discount_info}</span>
+                    )}
+                  </span>
+                ) : (
+                  <span>{formatAmount(item.purchase_item.price, settings)}</span>
+                )
+              ) : null}
+            </div>
+          )}
+          {(item.purchase_item?.purchase_history?.store_name || item.created_at) && (
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8 }}>
-              <span>🏪 {item.purchase_item.purchase_history.store_name}</span>
-              {item.purchase_item.purchase_history.purchased_at && (
-                <span>📅 {item.purchase_item.purchase_history.purchased_at}</span>
+              {item.purchase_item?.purchase_history?.store_name && (
+                <span>🏪 {item.purchase_item.purchase_history.store_name}</span>
+              )}
+              {(item.purchase_item?.purchase_history?.purchased_at || item.created_at) && (
+                <span>
+                  📅 {item.purchase_item?.purchase_history?.purchased_at ||
+                    item.created_at?.split('T')[0]}
+                </span>
               )}
             </div>
           )}
