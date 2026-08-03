@@ -35,7 +35,7 @@ const DAILY_LOCS = settings.daily_locations
       .select(`
         *,
         purchase_item:purchase_item_id (
-          price,
+          price, original_price, is_discount, discount_info,
           purchase_history:history_id (
             store_name,
             purchased_at
