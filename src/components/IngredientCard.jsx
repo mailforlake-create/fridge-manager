@@ -108,7 +108,7 @@ function AddToDiningModal({ item, consumedQty, onClose }) {
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>就餐日期</div>
-          <input style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 15, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff' }}
+          <input style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 15, border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box' }}
             type="date" value={dinedAt} onChange={e => setDinedAt(e.target.value)} />
         </div>
 
@@ -302,7 +302,7 @@ async function saveEdit() {
 
   const field = {
     width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 14,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
 
   if (editing) return (
@@ -345,8 +345,18 @@ async function saveEdit() {
           <option value="">选择分类</option>
           {FOOD_CATS.map(c => <option key={c}>{c}</option>)}
         </select>
-        <input style={field} type="date" value={form.expiry_date}
-          onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+        <div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>过期日期</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input style={{ ...field, flex: 1, minWidth: 0 }} type="date" value={form.expiry_date || ''}
+              onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
+            <button type="button" onClick={() => setForm(f => ({ ...f, expiry_date: '' }))}
+              disabled={!form.expiry_date}
+              style={{ padding: '8px 10px', borderRadius: 8, background: form.expiry_date ? '#f1f5f9' : '#f8fafc', color: form.expiry_date ? '#475569' : '#cbd5e1', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+              清除
+            </button>
+          </div>
+        </div>
         <input style={field} value={form.memo}
           onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="备注（可选）" />
         <div style={{ display: 'flex', gap: 8 }}>

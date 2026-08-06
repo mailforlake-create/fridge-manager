@@ -65,7 +65,7 @@ function ManualAddModal({ onClose, onSaved }) {
 
   const field = {
     width: '100%', padding: '9px 12px', borderRadius: 9, fontSize: 14,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
   const small = { fontSize: 12, color: '#94a3b8', marginBottom: 3 }
 
@@ -138,7 +138,7 @@ function PhotoAddModal({ onClose, onSaved }) {
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
 
   const setItemField = useCallback((i, k, v) => {
@@ -282,7 +282,7 @@ function BarcodeModal({ onClose, onSaved }) {
 
   const field = {
     width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 15,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
 
   async function lookup() {
