@@ -17,7 +17,7 @@ function calcExpiry(mfgDate, shelfDays) {
 
 const smallField = {
   width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
-  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
 }
 
 function ItemDetailModal({ item, onClose }) {
@@ -310,7 +310,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
 
   const setItemField = useCallback((i, k, v) => {
@@ -659,11 +659,11 @@ function ManualReceiptModal({ onClose, onSaved }) {
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
   const field = {
     width: '100%', padding: '9px 12px', borderRadius: 9, fontSize: 14,
-    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff'
+    border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
   }
 
   function setItemField(i, k, v) {
@@ -1516,8 +1516,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 placeholder="搜索商家、商品名称..."
                 style={{
                   width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, fontSize: 14,
-                  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff',
-                  boxSizing: 'border-box'
+                  border: '1.5px solid #e2e8f0', outline: 'none', background: '#fff', boxSizing: 'border-box'
                 }} />
               {search && (
                 <button onClick={() => setSearch('')} style={{
@@ -1869,8 +1868,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                     </div>
                     <div>
                       <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>过期日期</div>
-                      <input style={smallField} type="date" value={editingItem.item.expiry_date || ''}
-                        onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, expiry_date: e.target.value } }))} />
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input style={{ ...smallField, flex: 1, minWidth: 0 }} type="date" value={editingItem.item.expiry_date || ''}
+                          onChange={e => setEditingItem(ei => ({ ...ei, item: { ...ei.item, expiry_date: e.target.value } }))} />
+                        <button type="button" onClick={() => setEditingItem(ei => ({ ...ei, item: { ...ei.item, expiry_date: '' } }))}
+                          disabled={!editingItem.item.expiry_date}
+                          style={{ padding: '6px 10px', borderRadius: 7, background: editingItem.item.expiry_date ? '#f1f5f9' : '#f8fafc', color: editingItem.item.expiry_date ? '#475569' : '#cbd5e1', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                          清除
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
