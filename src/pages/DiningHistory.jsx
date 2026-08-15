@@ -4,7 +4,7 @@ import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
-import { formatAmount } from '../lib/currency'
+import { formatAmount, toJPY } from '../lib/currency'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [activeIngredientId, setActiveIngredientId] = useState(null)
