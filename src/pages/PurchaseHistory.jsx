@@ -317,6 +317,13 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     setAiItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
   }, [])
 
+  function toStoredPurchaseItemPrice(price) {
+    if (price === '' || price == null) return null
+    const numericPrice = Number(price)
+    if (!Number.isFinite(numericPrice)) return null
+    return currency === 'JPY' ? numericPrice : toJPY(numericPrice, currency, settings)
+  }
+
   async function handleFile(file) {
     setLoading(true)
     try {
@@ -367,8 +374,8 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           category: item.category || null,
           quantity: Number(item.quantity) || 1,
           unit: item.unit || '个',
-          price: item.price || null,
-          original_price: item.original_price || null,
+          price: toStoredPurchaseItemPrice(item.price),
+          original_price: toStoredPurchaseItemPrice(item.original_price),
           is_discount: item.is_discount || false,
           discount_info: item.discount_info || null,
           add_to_fridge: selected[item._tempId] && !isDailyCategory(item.category) && item.category !== '非食材',

@@ -4,7 +4,7 @@ import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
-import { formatAmount } from '../lib/currency'
+import { formatAmount, toJPY } from '../lib/currency'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [activeIngredientId, setActiveIngredientId] = useState(null)
@@ -1265,6 +1265,13 @@ function AddDiningModal({ onClose, onSaved }) {
     diningType === 'home' ? mealTime : (storeName.trim() && dinedAt && amount)
   )
 
+  function toStoredOutItemPrice(price) {
+    if (price === '' || price == null) return null
+    const numericPrice = Number(price)
+    if (!Number.isFinite(numericPrice)) return null
+    return outCurrency === 'JPY' ? numericPrice : toJPY(numericPrice, outCurrency, settings)
+  }
+
   // --- BUG FIX: Use sequential uploading to avoid network hanging on massive files ---
   async function save() {
     if (diningType === 'out' && (!storeName.trim() || !dinedAt || !amount)) {
@@ -1302,7 +1309,7 @@ function AddDiningModal({ onClose, onSaved }) {
               name_original: item.name_original || null,
               quantity: Number(item.quantity) || 1,
               unit: item.unit || '份',
-              price: item.price ? Number(item.price) : null
+              price: toStoredOutItemPrice(item.price)
             })
           })
         }
@@ -1332,7 +1339,7 @@ function AddDiningModal({ onClose, onSaved }) {
             name_zh: d.name_zh,
             quantity: Number(d.quantity) || 1,
             unit: d.unit || '人份',
-            price: d.price ? Number(d.price) : null
+            price: diningType === 'out' ? toStoredOutItemPrice(d.price) : (d.price ? Number(d.price) : null)
           })
         })
 
