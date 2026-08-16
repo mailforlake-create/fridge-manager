@@ -1071,6 +1071,18 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     async function restockItem(item) {
     const isDaily = isDailyCategory(item.category)
 
+    // 防重复：先检查该 purchase_item 是否已入库过
+    const table = isDaily ? 'daily_items' : 'ingredients'
+    const { data: existing } = await supabase
+      .from(table)
+      .select('id')
+      .eq('purchase_item_id', item.id)
+      .limit(1)
+    if (existing && existing.length > 0) {
+      alert(`该商品已入库过，无需重复入库（${isDaily ? '非食用品' : '食用品'}）`)
+      return
+    }
+
     if (isDaily) {
       await supabase.from('daily_items').insert({
         name_zh: item.name_zh,

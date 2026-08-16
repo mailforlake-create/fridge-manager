@@ -391,15 +391,29 @@ export default function Fridge() {
 
   async function fetchItems() {
     setLoading(true)
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`*, purchase_item:purchase_item_id (
-        price, original_price, is_discount, discount_info, history_id, created_at,
-        purchase_history:history_id ( store_name, purchased_at )
-      )`)
-      .order('expiry_date', { ascending: true, nullsFirst: false })
-    //setItems((data || []).filter(i => (i.quantity || 0) > (i.consumed_quantity || 0)))
-    setItems(data || [])
+    // 分页拉取全量：规避 PostgREST 默认 max_rows=1000 的静默截断
+    const PAGE_SIZE = 1000
+    const all = []
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('ingredients')
+        .select(`*, purchase_item:purchase_item_id (
+          price, original_price, is_discount, discount_info, history_id, created_at,
+          purchase_history:history_id ( store_name, purchased_at )
+        )`)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) {
+        console.warn('Failed to fetch ingredients:', error)
+        break
+      }
+      if (!data || data.length === 0) break
+      all.push(...data)
+      if (data.length < PAGE_SIZE) break // 不足一页说明已取完
+      from += PAGE_SIZE
+    }
+    setItems(all)
     setLoading(false)
   }
 
