@@ -294,10 +294,31 @@ export default function Settings() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {(localSettings.exchange_rates || []).map((rate, i) => (
                   <div key={i} style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
-                        {rate.label}（{rate.to}）
-                      </span>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                      <input
+                        value={rate.to}
+                        disabled={rate.to === 'JPY'}
+                        onChange={e => {
+                          const oldTo = (localSettings.exchange_rates || [])[i]?.to
+                          const newTo = e.target.value.toUpperCase()
+                          const newRates = [...(localSettings.exchange_rates || [])]
+                          newRates[i] = { ...newRates[i], to: newTo }
+                          update('exchange_rates', newRates)
+                          if (oldTo === localSettings.display_currency) {
+                            update('display_currency', newTo)
+                          }
+                        }}
+                        placeholder="代码"
+                        style={{ width: 70, padding: '5px 8px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none', textAlign: 'center', background: rate.to === 'JPY' ? '#f1f5f9' : '#fff', fontWeight: 600 }} />
+                      <input
+                        value={rate.label}
+                        onChange={e => {
+                          const newRates = [...(localSettings.exchange_rates || [])]
+                          newRates[i] = { ...newRates[i], label: e.target.value }
+                          update('exchange_rates', newRates)
+                        }}
+                        placeholder="货币名称"
+                        style={{ flex: 1, padding: '5px 10px', borderRadius: 7, fontSize: 13, border: '1.5px solid #e2e8f0', outline: 'none' }} />
                       {rate.to !== 'JPY' && (
                         <button
                           onClick={() => {
