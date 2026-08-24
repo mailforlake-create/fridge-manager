@@ -27,22 +27,33 @@ const TABLES = [
 ]
 
 async function fetchTable(tableName) {
-  const query = supabase.from(tableName).select('*')
+  const PAGE_SIZE = 1000
+  const all = []
+  let from = 0
 
   // settings 表用 key 排序，其他表用 created_at
-  if (tableName === 'settings') {
-    query.order('key', { ascending: true })
-  } else {
-    query.order('created_at', { ascending: true })
+  const orderColumn = tableName === 'settings' ? 'key' : 'created_at'
+
+  // 分页拉全量：规避 PostgREST 默认 max_rows=1000 的静默截断（超出部分会被丢弃，导致备份不完整）
+  while (true) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .order(orderColumn, { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (error) {
+      console.error(`  ✗ ${tableName}: ${error.message}`)
+      return []
+    }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break // 不足一页说明已取完
+    from += PAGE_SIZE
   }
 
-  const { data, error } = await query
-  if (error) {
-    console.error(`  ✗ ${tableName}: ${error.message}`)
-    return []
-  }
-  console.log(`  ✓ ${tableName}: ${data.length} 条`)
-  return data
+  console.log(`  ✓ ${tableName}: ${all.length} 条`)
+  return all
 }
 
 async function backup() {

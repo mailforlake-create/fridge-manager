@@ -86,14 +86,27 @@ function StorageResultModal({ storageItems, onFinish }) {
   const [done, setDone] = useState(false)
   const runningRef = useRef(false)
 
-  // 查询各表中未消耗的总件数（不含已消耗）
+  // 查询各表中未消耗的总件数（不含已消耗）— 分页拉全量，规避 PostgREST max_rows=1000 静默截断
   async function queryStockByTable() {
     const result = { ingredients: 0, daily_items: 0 }
+    const PAGE_SIZE = 1000
     for (const table of ['ingredients', 'daily_items']) {
       try {
-        const { data } = await supabase.from(table).select('quantity, consumed_quantity')
+        const rows = []
+        let from = 0
+        while (true) {
+          const { data, error } = await supabase
+            .from(table)
+            .select('quantity, consumed_quantity')
+            .range(from, from + PAGE_SIZE - 1)
+          if (error) break
+          if (!data || data.length === 0) break
+          rows.push(...data)
+          if (data.length < PAGE_SIZE) break // 不足一页说明已取完
+          from += PAGE_SIZE
+        }
         // 统计"未消耗的物品件数"，与物品页面左上角逻辑一致
-        result[table] = (data || []).filter(r => {
+        result[table] = rows.filter(r => {
           const qty = Number(r.quantity) || 0
           const consumed = Number(r.consumed_quantity) || 0
           return qty > consumed
