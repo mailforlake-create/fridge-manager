@@ -93,18 +93,7 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
         {QUICK_STEPS.map(step => (
-          <button key={step} onClick={() => {
-            setActiveQtyStep(step)
-            if (!activeIngredientId) return
-            setSelected(s => {
-              if (!s[activeIngredientId]) return s
-              const ing = findIngredientById(ingredients, activeIngredientId)
-              return {
-                ...s,
-                [activeIngredientId]: { ...s[activeIngredientId], qty: ing ? clampIngredientQty(ing, step, 0.01) : step }
-              }
-            })
-          }} disabled={filteredIng.every(ing => getIngredientSelectableLimit(ing) < step)}
+          <button key={step} onClick={() => setActiveQtyStep(step)} disabled={filteredIng.every(ing => getIngredientSelectableLimit(ing) < step)}
             style={{
               padding: '3px 8px',
               borderRadius: 999,
@@ -761,12 +750,6 @@ function EditDiningModal({ record, onClose, onSaved }) {
                   return (
                     <button key={step} onClick={() => {
                       setActiveQtyStep(step)
-                      if (activeEditItemIndex === null) return
-                      setItems(currentItems => currentItems.map((item, index) => {
-                        if (index !== activeEditItemIndex) return item
-                        const itemMaxQty = Number(item.quantity) || Number(item.qty_edit) || 0
-                        return { ...item, qty_edit: Math.min(itemMaxQty, step) }
-                      }))
                     }} disabled={disabled}
                       style={{
                         padding: '3px 8px',
@@ -809,7 +792,29 @@ function EditDiningModal({ record, onClose, onSaved }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <button onClick={() => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],qty_edit:Math.max(activeQtyStep,parseFloat(((n[i].qty_edit||1)-activeQtyStep).toFixed(2)))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                      <span style={{ fontSize: 13, fontWeight: 600, minWidth: 36, textAlign: 'center' }}>{item.qty_edit}{item.unit}</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        max={item.quantity}
+                        step={activeQtyStep}
+                        value={item.qty_edit}
+                        aria-label={`${item.name_zh}使用量`}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setItems(currentItems => {
+                          const n = [...currentItems]
+                          n[i] = { ...n[i], qty_edit: e.target.value }
+                          return n
+                        })}
+                        onBlur={e => setItems(currentItems => {
+                          const n = [...currentItems]
+                          const maxQty = Number(n[i].quantity) || Number(n[i].qty_edit) || 0.01
+                          const qty = Math.min(maxQty, Math.max(0.01, Number(e.target.value) || 0.01))
+                          n[i] = { ...n[i], qty_edit: qty }
+                          return n
+                        })}
+                        style={{ width: 54, padding: '3px 4px', borderRadius: 5, border: '1.5px solid #bbf7d0', fontSize: 13, fontWeight: 600, textAlign: 'center', outline: 'none' }}
+                      />
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{item.unit}</span>
                       <button onClick={() => setItems(currentItems => { const n=[...currentItems]; const maxQty = Number(n[i].quantity) || Number(n[i].qty_edit) || 0; n[i]={...n[i],qty_edit:Math.min(maxQty, parseFloat(((n[i].qty_edit||1)+activeQtyStep).toFixed(2)))}; return n })}
                         style={{ width: 22, height: 22, borderRadius: 5, background: '#f1f5f9', color: '#475569', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                     </div>
@@ -1010,18 +1015,7 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: '#64748b' }}>步长</span>
           {QUICK_STEPS.map(step => (
-            <button key={step} onClick={() => {
-              setActiveQtyStep(step)
-              if (!activeIngredientId) return
-              setSelected(s => {
-                if (!s[activeIngredientId]) return s
-                const ing = findIngredientById(filtered, activeIngredientId)
-                return {
-                  ...s,
-                  [activeIngredientId]: { ...s[activeIngredientId], qty: ing ? clampIngredientQty(ing, step, 0.01) : step }
-                }
-              })
-            }} disabled={filtered.every(ing => getIngredientSelectableLimit(ing) < step)}
+            <button key={step} onClick={() => setActiveQtyStep(step)} disabled={filtered.every(ing => getIngredientSelectableLimit(ing) < step)}
               style={{
                 padding: '4px 8px',
                 borderRadius: 999,
