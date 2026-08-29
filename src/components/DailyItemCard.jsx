@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useSettings } from '../context/SettingsContext'
 import ConfirmModal from './ConfirmModal'
 import { formatAmount } from '../lib/currency'
+import { formatDecimal } from '../lib/format'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const { settings } = useSettings()
@@ -34,7 +35,7 @@ const DAILY_LOCS = settings.daily_locations
   async function consumeItem(all) {
     const qty = all ? remaining : Number(consumeQty)
     if (!qty || qty <= 0) return alert('请输入有效的使用数量')
-    if (qty > remaining) return alert(`最多可使用 ${remaining}${item.unit}`)
+    if (qty > remaining) return alert(`最多可使用 ${formatDecimal(remaining)}${item.unit}`)
     const newConsumed = (item.consumed_quantity || 0) + qty
     await supabase.from('daily_items').update({ consumed_quantity: newConsumed }).eq('id', item.id)
     onUpdate({ ...item, consumed_quantity: newConsumed })
@@ -211,10 +212,10 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
         <div style={{ fontSize: 14, color: '#475569' }}>
-          <span style={{ fontWeight: 600 }}>剩余 {remaining}{item.unit}</span>
+          <span style={{ fontWeight: 600 }}>剩余 {formatDecimal(remaining)}{item.unit}</span>
           {(item.consumed_quantity || 0) > 0 && (
             <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
-              (已用 {item.consumed_quantity}{item.unit})
+              (已用 {formatDecimal(item.consumed_quantity)}{item.unit})
             </span>
           )}
         </div>
@@ -248,19 +249,19 @@ const isFullyConsumed = (item.quantity || 0) <= (item.consumed_quantity || 0)
                 width: 70, textAlign: 'center', fontSize: 18, fontWeight: 700, color: '#1e293b',
                 cursor: 'text', padding: '4px 8px', borderRadius: 8,
                 border: '1.5px solid #e2e8f0', background: '#fff'
-              }}>{consumeQty}</div>
+              }}>{formatDecimal(consumeQty)}</div>
             )}
             <button onClick={() => { setConsumeQty(q => Math.min(remaining, parseFloat((Number(q) + itemConsumeStep).toFixed(2)))); setEditingQty(false) }}
               style={{ width: 36, height: 36, borderRadius: 10, background: '#f1f5f9', color: '#475569', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>+</button>
           </div>
           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginBottom: 10 }}>
-            {item.unit}　点击数字可手动输入　最多 {remaining}{item.unit}
+            {item.unit}　点击数字可手动输入　最多 {formatDecimal(remaining)}{item.unit}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => consumeItem(false)} style={{
               flex: 2, padding: '10px 0', borderRadius: 10,
               background: '#3b82f6', color: '#fff', fontSize: 14, fontWeight: 700
-            }}>已使用 {consumeQty}{item.unit}</button>
+            }}>已使用 {formatDecimal(consumeQty)}{item.unit}</button>
             <button onClick={() => consumeItem(true)} style={{
               flex: 1, padding: '10px 0', borderRadius: 10,
               background: '#ef4444', color: '#fff', fontSize: 14, fontWeight: 600

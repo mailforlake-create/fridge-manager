@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 //import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 import ConfirmModal from './ConfirmModal'
+import { formatDecimal } from '../lib/format'
 
 function AddToDiningModal({ item, consumedQty, onClose }) {
   const [dinedAt, setDinedAt] = useState(new Date().toISOString().split('T')[0])
@@ -102,7 +103,7 @@ function AddToDiningModal({ item, consumedQty, onClose }) {
       <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxWidth: 430 }}>
         <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>添加到自炊履历</div>
         <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
-          {item.name_zh} × {consumedQty}{item.unit}
+          {item.name_zh} × {formatDecimal(consumedQty)}{item.unit}
           {cost > 0 && <span style={{ marginLeft: 6, color: '#16a34a' }}>成本 ¥{cost}</span>}
         </div>
 
@@ -421,10 +422,10 @@ async function saveEdit() {
               {item.purchase_item.price ? (
                 item.purchase_item.is_discount ? (
                   <span>
-                    <span style={{ color: '#ef4444', fontWeight: 600 }}>¥{item.purchase_item.price}</span>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>¥{formatDecimal(item.purchase_item.price)}</span>
                     {item.purchase_item.original_price && (
                       <span style={{ textDecoration: 'line-through', marginLeft: 4 }}>
-                        ¥{item.purchase_item.original_price}
+                        ¥{formatDecimal(item.purchase_item.original_price)}
                       </span>
                     )}
                     {item.purchase_item.discount_info && (
@@ -432,7 +433,7 @@ async function saveEdit() {
                     )}
                   </span>
                 ) : (
-                  <span>¥{item.purchase_item.price}</span>
+                  <span>¥{formatDecimal(item.purchase_item.price)}</span>
                 )
               ) : null}
             </div>
@@ -485,7 +486,7 @@ async function saveEdit() {
           <span style={{ fontWeight: 600 }}>剩余 {remaining}{item.unit}</span>
           {(item.consumed_quantity || 0) > 0 && (
             <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
-              (已用 {item.consumed_quantity}{item.unit})
+              (已用 {formatDecimal(item.consumed_quantity)}{item.unit})
             </span>
           )}
         </div>
@@ -536,7 +537,7 @@ async function saveEdit() {
                 padding: '4px 8px', borderRadius: 8, border: '1.5px solid #e2e8f0',
                 background: '#fff'
               }}>
-                {consumeQty}
+{formatDecimal(consumeQty)}
               </div>
             )}
 
@@ -568,7 +569,7 @@ async function saveEdit() {
           </div>
 
           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginBottom: 10 }}>
-            当前步长 {activeConsumeStep}{item.unit}　点击数字可手动输入　最多 {remaining}{item.unit}
+            当前步长 {formatDecimal(activeConsumeStep)}{item.unit}　点击数字可手动输入　最多 {formatDecimal(remaining)}{item.unit}
           </div>
           {/* 保存履历选项 */}
           <div style={{ marginBottom: 10 }}>
@@ -604,7 +605,7 @@ async function saveEdit() {
             <button onClick={() => consumeItem(false)} style={{
               flex: 2, padding: '10px 0', borderRadius: 10,
               background: '#f59e0b', color: '#fff', fontSize: 14, fontWeight: 700
-            }}>已食用 {consumeQty}{item.unit}</button>
+            }}>已食用 {formatDecimal(consumeQty)}{item.unit}</button>
             <button onClick={() => consumeItem(true)} style={{
               flex: 1, padding: '10px 0', borderRadius: 10,
               background: '#ef4444', color: '#fff', fontSize: 14, fontWeight: 600

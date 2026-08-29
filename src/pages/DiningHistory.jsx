@@ -5,6 +5,7 @@ import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
 import { formatAmount, toJPY } from '../lib/currency'
+import { formatDecimal } from '../lib/format'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
   const [activeIngredientId, setActiveIngredientId] = useState(null)
@@ -151,8 +152,8 @@ function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{ing.name_zh}</div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>
                         {ing.category && `${ing.category} · `}
-                        剩余 {remaining}{ing.unit}
-                        {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}`}
+                        剩余 {formatDecimal(remaining)}{ing.unit}
+                        {ing.purchase_item?.price && ` · ¥${formatDecimal(ing.purchase_item.price)}`}
                       </div>
                       {(storeName || purchasedAt) && (
                         <div style={{ fontSize: 11, color: '#94a3b8' }}>
@@ -337,7 +338,7 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
         <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
           {item.name_original && <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>{item.name_original}</div>}
           <div style={{ fontSize: 14, color: '#475569' }}>
-            {item.consumed_quantity || item.quantity}{item.unit}
+            {formatDecimal(item.consumed_quantity || item.quantity)}{item.unit}
             {getDiningItemCost(item) > 0 && (
               <span style={{ marginLeft: 8, fontWeight: 600, color: '#16a34a' }}>成本 ¥{getDiningItemCost(item).toFixed(1)}</span>
             )}
@@ -786,7 +787,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
                           {isActiveStepItem ? '当前步长应用对象' : '点击此食材设为步长应用对象'}
                         </div>
                       {item.price_contribution > 0 && (
-                        <div style={{ fontSize: 11, color: '#16a34a' }}>成本 ¥{item.price_contribution}</div>
+                        <div style={{ fontSize: 11, color: '#16a34a' }}>成本 ¥{formatDecimal(item.price_contribution)}</div>
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1058,7 +1059,7 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
                     <div style={{ fontSize: 14, fontWeight: 500 }}>{ing.name_zh}</div>
                     <div style={{ fontSize: 12, color: '#94a3b8' }}>
                       剩余 {remaining.toFixed(2)}{ing.unit}
-                      {ing.purchase_item?.price && ` · ¥${ing.purchase_item.price}/${ing.quantity}${ing.unit}`}
+                      {ing.purchase_item?.price && ` · ¥${formatDecimal(ing.purchase_item.price)}/${formatDecimal(ing.quantity)}${ing.unit}`}
                     </div>
                     {isSelected && (
                       <div onClick={() => setActiveIngredientId(ing.id)} style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2118,13 +2119,13 @@ export default function DiningHistory() {
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                   <div style={{ textAlign: 'right', fontSize: 13 }}>
                                                     {r.dining_type === 'home' ? (
-                                                      <div style={{ color: '#64748b' }}>{item.consumed_quantity || item.quantity}{item.unit}</div>
+                                                      <div style={{ color: '#64748b' }}>{formatDecimal(item.consumed_quantity || item.quantity)}{item.unit}</div>
                                                     ) : (
                                                       <>
-                                                        <div style={{ color: '#64748b' }}>{item.quantity}{item.unit}</div>
+                                                        <div style={{ color: '#64748b' }}>{formatDecimal(item.quantity)}{item.unit}</div>
                                                         {item.price && (
                                                           <div style={{ fontWeight: 600, color: '#f97316' }}>
-                                                            {item.quantity > 1 && <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>{formatAmount(item.price, settings)}×{item.quantity}</span>}
+                                                            {item.quantity > 1 && <span style={{ fontSize: 11, color: '#94a3b8', marginRight: 4 }}>{formatAmount(item.price, settings)}×{formatDecimal(item.quantity)}</span>}
                                                             {formatAmount(Number(item.price) * Number(item.quantity), settings)}
                                                           </div>
                                                         )}

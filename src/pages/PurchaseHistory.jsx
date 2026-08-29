@@ -6,6 +6,7 @@ import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY
 import { useSettings } from '../context/SettingsContext'
 import { formatAmount } from '../lib/currency'
 import { toJPY } from '../lib/currency'
+import { formatDecimal } from '../lib/format'
 
 function calcExpiry(mfgDate, shelfDays) {
   if (!mfgDate || !shelfDays) return ''
@@ -36,7 +37,7 @@ function ItemDetailModal({ item, onClose }) {
           {[
             ['原文名称', item.name_original],
             ['分类', item.category],
-            ['数量', item.quantity && item.unit ? `${item.quantity}${item.unit}` : null],
+            ['数量', item.quantity && item.unit ? `${formatDecimal(item.quantity)}${item.unit}` : null],
             ['实付价格', item.price ? formatAmount(item.price, settings) : null],,
             ['原价', item.original_price ? formatAmount(item.original_price, settings) : null],
             ['折扣说明', item.discount_info],
@@ -2076,7 +2077,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                                                       {item.discount_info && <div style={{ fontSize: 11, color: '#ef4444' }}>{item.discount_info}</div>}
                                                       {item.memo && <div style={{ fontSize: 11, color: '#64748b' }}>备注：{item.memo}</div>}
                                                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                                                        {item.quantity}{item.unit}
+                                                        {formatDecimal(item.quantity)}{item.unit}
                                                         {item.price && (
                                                           <span style={{ marginLeft: 6, color: item.is_discount ? '#ef4444' : '#475569', fontWeight: 600 }}>
                                                             {formatAmount(item.price, settings)}
