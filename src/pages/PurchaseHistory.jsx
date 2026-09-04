@@ -4,8 +4,7 @@ import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
 import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
-import { formatAmount } from '../lib/currency'
-import { toJPY } from '../lib/currency'
+import { formatAmount, getCurrencySymbol, toJPY } from '../lib/currency'
 import { formatDecimal } from '../lib/format'
 
 function calcExpiry(mfgDate, shelfDays) {
@@ -1194,8 +1193,8 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           category: item.category || null,
           quantity: Number(item.quantity) || 1,
           unit: item.unit || '个',
-          price: item.price !== '' ? Number(item.price) : null,
-          original_price: item.original_price !== '' ? Number(item.original_price) : null,
+          price: item.price !== '' ? toJPY(item.price, editingHistory.currency || 'JPY', settings) : null,
+          original_price: item.original_price !== '' ? toJPY(item.original_price, editingHistory.currency || 'JPY', settings) : null,
           is_discount: item.is_discount,
           discount_info: item.discount_info || null,
           expiry_date: item.expiry_date || null,
@@ -1635,6 +1634,10 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto'
               }}>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>编辑购物记录</div>
+                {(() => {
+                  const entryCurrency = editingHistory.currency || 'JPY'
+                  const entryCurrencySymbol = getCurrencySymbol(entryCurrency, settings)
+                  return <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>商家名称（中文）</div>
@@ -1716,14 +1719,14 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                             </div>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>实付价格</div>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>实付价格（{entryCurrencySymbol} {entryCurrency}）</div>
                                 <input style={smallField} type="number" value={item.price}
-                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],price:e.target.value}; return n })} placeholder="¥" />
+                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],price:e.target.value}; return n })} placeholder={entryCurrencySymbol} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>原价</div>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>原价（{entryCurrencySymbol} {entryCurrency}）</div>
                                 <input style={smallField} type="number" value={item.original_price}
-                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],original_price:e.target.value}; return n })} placeholder="¥" />
+                                  onChange={e => setNewItems(items => { const n=[...items]; n[i]={...n[i],original_price:e.target.value}; return n })} placeholder={entryCurrencySymbol} />
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1786,6 +1789,8 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                     background: '#16a34a', color: '#fff', fontSize: 14, fontWeight: 700
                   }}>保存</button>
                 </div>
+                </>
+                })()}
               </div>
             </div>
           )}

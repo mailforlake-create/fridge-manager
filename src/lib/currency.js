@@ -9,6 +9,11 @@ export function getDisplayRate(settings) {
   }
 }
 
+export function getCurrencySymbol(currency, settings) {
+  const rate = (settings?.exchange_rates || []).find(r => r.to === currency)
+  return rate?.symbol || currency
+}
+
 // JPY金额 → 显示货币
 export function formatAmount(jpyAmount, settings) {
   if (jpyAmount == null) return ''
@@ -25,6 +30,16 @@ export function toJPY(amount, fromCurrency, settings) {
   const rate = rates.find(r => r.to === fromCurrency)
   if (!rate || !rate.rate) return Number(amount)
   return Math.round(Number(amount) / rate.rate)
+}
+
+// JPY金额 → 指定录入货币（编辑既有记录时使用）
+export function fromJPY(amount, toCurrency, settings) {
+  if (amount == null || amount === '') return ''
+  if (toCurrency === 'JPY') return Number(amount)
+  const rates = settings?.exchange_rates || []
+  const rate = rates.find(r => r.to === toCurrency)
+  if (!rate || !rate.rate) return Number(amount)
+  return Math.round(Number(amount) * rate.rate * 10) / 10
 }
 
 // 显示原始金额（录入时的货币）
