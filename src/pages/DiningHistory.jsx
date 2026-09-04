@@ -4,7 +4,7 @@ import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
 import { useSettings } from '../context/SettingsContext'
-import { formatAmount, toJPY } from '../lib/currency'
+import { formatAmount, fromJPY, getCurrencySymbol, toJPY } from '../lib/currency'
 import { formatDecimal } from '../lib/format'
 
 function IngredientPicker({ dinedAt, selected, setSelected, ingredients, loading }) {
@@ -363,6 +363,8 @@ function DishDetailModal({ item, diningId, photos, onAddPhotos, onDeletePhoto, u
 
 function EditDiningModal({ record, onClose, onSaved }) {
   const { settings } = useSettings()
+  const entryCurrency = record.currency || 'JPY'
+  const entryCurrencySymbol = getCurrencySymbol(entryCurrency, settings)
   const diningQtyStep = Math.min(10, Math.max(0.01, Number(settings.dining_qty_step) || 1))
   const QUICK_STEPS = [0.01, 0.1, 1, 5, 10]
   const [activeQtyStep, setActiveQtyStep] = useState(diningQtyStep)
@@ -376,7 +378,11 @@ function EditDiningModal({ record, onClose, onSaved }) {
     memo: record.memo || ''
   })
   const [items, setItems] = useState(
-    (record.dining_items ||[]).map(i => ({ ...i, price: i.price || '', qty_edit: i.consumed_quantity || i.quantity || 1 }))
+    (record.dining_items ||[]).map(i => ({
+      ...i,
+      price: fromJPY(i.price, entryCurrency, settings),
+      qty_edit: i.consumed_quantity || i.quantity || 1
+    }))
   )
   const [activeEditItemIndex, setActiveEditItemIndex] = useState(items.length ? 0 : null)
   const[saving, setSaving] = useState(false)
@@ -487,7 +493,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
               name_original: item.name_original || null,
               quantity: Number(item.quantity) || 1,
               unit: item.unit || '份',
-              price: item.price ? Number(item.price) : null
+              price: item.price ? toJPY(item.price, entryCurrency, settings) : null
             }))
           )
         }
@@ -724,7 +730,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
                           <input style={smallField} type="number" value={item.quantity || 1} onChange={e => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],quantity:e.target.value}; return n })} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单价¥</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>单价（{entryCurrencySymbol} {entryCurrency}）</div>
                           <input style={smallField} type="number" value={item.price || ''} onChange={e => setItems(currentItems => { const n=[...currentItems]; n[i]={...n[i],price:e.target.value}; return n })} />
                         </div>
                       </div>
@@ -1713,7 +1719,7 @@ export default function DiningHistory() {
   useEffect(() => { fetchRecords() },[])
 
   // 只查渲染真正用到的字段，避免全量拉取大文本列
-  const DINING_HISTORY_SELECT = 'id, dining_type, meal_time, dined_at, dined_time, store_name, store_name_original, amount, home_cost, memo, created_at'
+  const DINING_HISTORY_SELECT = 'id, dining_type, meal_time, dined_at, dined_time, store_name, store_name_original, amount, currency, home_cost, memo, created_at'
   const DINING_ITEM_SELECT = 'id, dining_id, name_zh, name_original, category, quantity, unit, price, consumed_quantity, ingredient_id, update_consumed, price_contribution, memo'
 
   // 拆 3 层嵌套为 2 次扁平批量查询（走 IN 索引 + 分批规避 URL 长度限制），再按 record 结构组装回
