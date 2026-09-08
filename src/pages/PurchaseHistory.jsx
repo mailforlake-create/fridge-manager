@@ -396,30 +396,17 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           memo: item.memo || null,
         }))
 
-        const savedItems = []
-          for (const historyItem of historyItems) {
-            const { data } = await supabase
-              .from('purchase_items')
-              .insert(historyItem)
-              .select()
-              .single()
-            savedItems.push(data)
-          }
-
-        // 使用 name_zh + history_id 进行映射，避免数组索引错位
+        // ★ 逐条插入 purchase_items，并按下标顺序绑定 _tempId→真实id。
+        // 不能用 name_zh 匹配：同张小票允许出现同名商品，name 匹配会把多条都映射到第一行
         const purchaseItemMap = {}
-        savedItems?.forEach(saved => {
-          const original = historyItems.find(h =>
-            h.name_zh === saved.name_zh && h.history_id === saved.history_id
-          )
-          if (original) {
-            // 反查 _tempId：从 itemsWithTempId 中找到匹配的
-            const matched = itemsWithTempId.find(item =>
-              item.name_zh === saved.name_zh && item._tempId !== undefined
-            )
-            if (matched) purchaseItemMap[matched._tempId] = saved.id
-          }
-        })
+        for (let i = 0; i < historyItems.length; i++) {
+          const { data } = await supabase
+            .from('purchase_items')
+            .insert(historyItems[i])
+            .select()
+            .single()
+          if (data) purchaseItemMap[itemsWithTempId[i]._tempId] = data.id
+        }
 
         // ★ 改造：收集待入库物品，委托 StorageResultModal 处理
         const inventoryItems = []
@@ -745,26 +732,23 @@ function ManualReceiptModal({ onClose, onSaved }) {
         add_to_fridge: item.add_to_fridge && item.category !== '非食材'
       }))
 
-      const savedItems = []
-        for (const historyItem of historyItems) {
-          const { data } = await supabase
-            .from('purchase_items')
-            .insert(historyItem)
-            .select()
-            .single()
-          savedItems.push(data)
-        }
-
-      if (itemsError) { console.error('商品保存失败：', itemsError); alert('保存失败：' + itemsError.message); setSaving(false); return }
-
-      // 使用 name_zh + history_id 进行映射，避免数组索引错位
+      // ★ 逐条插入 purchase_items，并按下标顺序绑定 _tempId→真实id。
+      // 不能用 name_zh 匹配：同张小票允许出现同名商品；同时移除遗留的 itemsError 检查（变量不存在，会导致保存必然抛错）
       const purchaseItemMap = {}
-      savedItems?.forEach(saved => {
-        const matched = itemsWithTempId.find(item =>
-          item.name_zh === saved.name_zh && item._tempId !== undefined
-        )
-        if (matched) purchaseItemMap[matched._tempId] = saved.id
-      })
+      for (let i = 0; i < historyItems.length; i++) {
+        const { data, error } = await supabase
+          .from('purchase_items')
+          .insert(historyItems[i])
+          .select()
+          .single()
+        if (error) {
+          console.error('商品保存失败：', error)
+          alert('保存失败：' + error.message)
+          setSaving(false)
+          return
+        }
+        if (data) purchaseItemMap[itemsWithTempId[i]._tempId] = data.id
+      }
 
       // ★ 改造：收集待入库物品，委托 StorageResultModal 处理
       const inventoryItems = []
@@ -1084,16 +1068,21 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     async function restockItem(item) {
     const isDaily = isDailyCategory(item.category)
 
-    // 防重复：先检查该 purchase_item 是否已入库过
+    // 防重复：仅当该 purchase_item 名下仍有“未消耗完”的库存时拦截；
+    // 若库存已被删除或已全部消耗，则允许重新入库
     const table = isDaily ? 'daily_items' : 'ingredients'
     const { data: existing } = await supabase
       .from(table)
-      .select('id')
+      .select('quantity, consumed_quantity')
       .eq('purchase_item_id', item.id)
       .limit(1)
     if (existing && existing.length > 0) {
-      alert(`该商品已入库过，无需重复入库（${isDaily ? '非食用品' : '食用品'}）`)
-      return
+      const qty = Number(existing[0].quantity) || 0
+      const consumed = Number(existing[0].consumed_quantity) || 0
+      if (qty > consumed) {
+        alert(`该商品已入库过，无需重复入库（${isDaily ? '非食用品' : '食用品'}）`)
+        return
+      }
     }
 
     if (isDaily) {
@@ -1133,10 +1122,11 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function deleteHistory(h, alsoFridge) {
     setConfirm(null)
     if (alsoFridge) {
-      const names = h.purchase_items?.filter(i => i.add_to_fridge).map(i => i.name_zh) || []
-      for (const name of names) {
-        await supabase.from('ingredients').delete().eq('name_zh', name)
-        await supabase.from('daily_items').delete().eq('name_zh', name)
+      // 按 purchase_item_id 删除关联库存，避免同名商品误删其它小票明细的库存
+      const ids = h.purchase_items?.filter(i => i.add_to_fridge).map(i => i.id) || []
+      for (const pid of ids) {
+        await supabase.from('ingredients').delete().eq('purchase_item_id', pid)
+        await supabase.from('daily_items').delete().eq('purchase_item_id', pid)
       }
     }
     await supabase.from('purchase_history').delete().eq('id', h.id)
@@ -1202,17 +1192,14 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           add_to_fridge: item.add_to_fridge && item.stock_type !== 'none',
         }))
 
-        const { data: savedItems } = await supabase
-          .from('purchase_items').insert(historyItems).select()
-
-        // 使用 name_zh 进行映射，避免数组索引错位
+        // ★ 逐条插入 purchase_items，并按下标顺序绑定 _tempId→真实id。
+        // 不能用批量 insert：批量 RETURNING 的行序不保证；也不能按 name 匹配：同名会错位
         const purchaseItemMap = {}
-        savedItems?.forEach(saved => {
-          const matched = itemsWithTempId.find(item =>
-            item.name_zh === saved.name_zh && item._tempId !== undefined
-          )
-          if (matched) purchaseItemMap[matched._tempId] = saved.id
-        })
+        for (let i = 0; i < historyItems.length; i++) {
+          const { data } = await supabase
+            .from('purchase_items').insert(historyItems[i]).select().single()
+          if (data) purchaseItemMap[itemsWithTempId[i]._tempId] = data.id
+        }
 
         const failedItems = []
 
