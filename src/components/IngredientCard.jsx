@@ -143,7 +143,7 @@ function AddToDiningModal({ item, consumedQty, onClose }) {
     </div>
   )
 }
-export default function IngredientCard({ item, onDelete, onUpdate }) {
+export default function IngredientCard({ item, onDelete, onUpdate, onRequestDelete }) {
   const [syncPurchase, setSyncPurchase] = useState(true)
   const [syncDining, setSyncDining] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -474,7 +474,7 @@ async function saveEdit() {
               </span>
             </div>
           ) : null}
-          <button onClick={() => setDeleteConfirm(item)} style={{
+          <button onClick={() => (onRequestDelete ? onRequestDelete(item) : setDeleteConfirm(item))} style={{
             fontSize: 18, background: 'none', color: '#cbd5e1', lineHeight: 1
           }}>×</button>
         </div>

@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import IngredientCard from '../components/IngredientCard'
+import ConfirmModal from '../components/ConfirmModal'
+import { collectConsumptionImpact, removeConsumptionDetails } from '../lib/diningStock'
 import DailyItems from './DailyItems'
 import { recognizePhoto, callAI, fileToBase64, calcExpiry } from '../lib/aiRecognition'
 //import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
@@ -363,6 +365,8 @@ function BarcodeModal({ onClose, onSaved }) {
 export default function Fridge() {
   const [tab, setTab] = useState('food')
   const [items, setItems] = useState([])
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deletingStock, setDeletingStock] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -417,9 +421,41 @@ export default function Fridge() {
     setLoading(false)
   }
 
-  async function deleteItem(id) {
-    await supabase.from('ingredients').delete().eq('id', id)
-    setItems(items.filter(i => i.id !== id))
+  // 删除前先查询关联的自炊消耗明细，弹窗确认后联动删除
+  async function requestDeleteItem(item) {
+    try {
+      const impact = await collectConsumptionImpact([item.id])
+      setDeleteTarget({ item, impact })
+    } catch (e) {
+      alert('查询关联消耗明细失败：' + e.message)
+    }
+  }
+
+  async function confirmDeleteItem() {
+    if (!deleteTarget || deletingStock) return
+    const { item, impact } = deleteTarget
+    setDeletingStock(true)
+    try {
+      let removed = null
+      if (impact?.items?.length) {
+        removed = await removeConsumptionDetails(impact.items.map(i => i.id))
+      }
+      const { error } = await supabase.from('ingredients').delete().eq('id', item.id)
+      if (error) { alert('删除失败：' + error.message); return }
+      setItems(current => current.filter(i => i.id !== item.id))
+      setDeleteTarget(null)
+      if (impact?.count > 0) {
+        const parts = [`已删除「${item.name_zh}」，同时删除 ${impact.count} 条自炊消耗明细`]
+        if (removed?.updatedCosts?.length) parts.push(`已重算 ${removed.updatedCosts.length} 个餐次成本`)
+        if (removed?.deletedRecords) parts.push(`${removed.deletedRecords} 个餐次已无明细，已一并删除`)
+        if (removed?.removedPhotos) parts.push(`同时删除 ${removed.removedPhotos} 张照片`)
+        alert(parts.join('\n'))
+      }
+    } catch (e) {
+      alert('删除失败：' + e.message)
+    } finally {
+      setDeletingStock(false)
+    }
   }
 
   function updateItem(updated) {
@@ -578,7 +614,7 @@ export default function Fridge() {
                   </div>
                   <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {expired.map(item => (
-                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                      <IngredientCard key={item.id} item={item} onRequestDelete={requestDeleteItem} onUpdate={updateItem} />
                     ))}
                   </div>
                 </div>
@@ -594,7 +630,7 @@ export default function Fridge() {
                   </div>
                   <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {expiringSoon.map(item => (
-                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                      <IngredientCard key={item.id} item={item} onRequestDelete={requestDeleteItem} onUpdate={updateItem} />
                     ))}
                   </div>
                 </div>
@@ -645,7 +681,7 @@ export default function Fridge() {
                                 {!isMonthCollapsed && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                     {monthItems.map(item => (
-                                      <IngredientCard key={item.id} item={item} onDelete={deleteItem} onUpdate={updateItem} />
+                                      <IngredientCard key={item.id} item={item} onRequestDelete={requestDeleteItem} onUpdate={updateItem} />
                                     ))}
                                   </div>
                                 )}
@@ -666,6 +702,18 @@ export default function Fridge() {
       {showManual && <ManualAddModal onClose={() => setShowManual(false)} onSaved={fetchItems} />}
       {showPhoto && <PhotoAddModal onClose={() => setShowPhoto(false)} onSaved={fetchItems} />}
       {showBarcode && <BarcodeModal onClose={() => setShowBarcode(false)} onSaved={fetchItems} />}
+      {deleteTarget && (
+        <ConfirmModal
+          title="删除食材"
+          message={deleteTarget.impact?.count > 0
+            ? `确认删除「${deleteTarget.item.name_zh}」？\n\n该食材有 ${deleteTarget.impact.count} 条自炊消耗明细，删除后将一并删除并重算当天自炊成本：\n\n${deleteTarget.impact.summary}`
+            : `确认删除「${deleteTarget.item.name_zh}」？`}
+          confirmText={deleteTarget.impact?.count > 0 ? '删除并同步清理明细' : '确认删除'}
+          confirmColor="#ef4444"
+          onConfirm={confirmDeleteItem}
+          onCancel={() => (deletingStock ? null : setDeleteTarget(null))}
+        />
+      )}
     </div>
   )
 }

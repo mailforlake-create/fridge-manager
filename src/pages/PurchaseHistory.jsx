@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, batchFetchIn } from '../lib/supabase'
+import { removeStockByPurchaseItems } from '../lib/diningStock'
 import DiningHistory from './DiningHistory'
 import { recognizeReceipt } from '../lib/aiRecognition'
 import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
@@ -1122,11 +1123,14 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function deleteHistory(h, alsoFridge) {
     setConfirm(null)
     if (alsoFridge) {
-      // 按 purchase_item_id 删除关联库存，避免同名商品误删其它小票明细的库存
+      // 按 purchase_item_id 删除关联库存，并联动清理自炊消耗明细（避免留下孤儿明细）
       const ids = h.purchase_items?.filter(i => i.add_to_fridge).map(i => i.id) || []
-      for (const pid of ids) {
-        await supabase.from('ingredients').delete().eq('purchase_item_id', pid)
-        await supabase.from('daily_items').delete().eq('purchase_item_id', pid)
+      if (ids.length) {
+        try {
+          await removeStockByPurchaseItems(ids)
+        } catch (e) {
+          alert('清理关联消耗明细失败：' + e.message)
+        }
       }
     }
     await supabase.from('purchase_history').delete().eq('id', h.id)
@@ -1142,8 +1146,11 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     const { historyId, item } = confirm
     await supabase.from('purchase_items').delete().eq('id', item.id)
     if (syncDeleteStock && item.add_to_fridge) {
-      await supabase.from('ingredients').delete().eq('purchase_item_id', item.id)
-      await supabase.from('daily_items').delete().eq('purchase_item_id', item.id)
+      try {
+        await removeStockByPurchaseItems([item.id])
+      } catch (e) {
+        alert('清理关联消耗明细失败：' + e.message)
+      }
     }
     setHistory(history.map(h =>
       h.id === historyId
