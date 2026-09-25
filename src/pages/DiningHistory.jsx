@@ -425,13 +425,22 @@ function EditDiningModal({ record, onClose, onSaved }) {
   }
 
   async function rollbackRemovedConsumedItems(removedItems) {
-    const rollbackByIngredient = removedItems.reduce((map, item) => {
+    // 按库存 id 汇总回退量：同一库存被多条明细引用时合并，避免相互覆盖
+    const rollbackByIngredient = new Map()
+    const unlinkedNames = []
+    for (const item of removedItems) {
+      if (!item.ingredient_id) {
+        unlinkedNames.push(`${item.name_zh || '未命名食材'}（无库存关联）`)
+        continue
+      }
       const key = String(item.ingredient_id)
-      map.set(key, (map.get(key) || 0) + getDiningItemConsumedQty(item))
-      return map
-    }, new Map())
-    const rollbackIngredientIds = [...rollbackByIngredient.keys()]
-    const freshIngredients = await fetchIngredientsByIds(rollbackIngredientIds)
+      rollbackByIngredient.set(key, (rollbackByIngredient.get(key) || 0) + getDiningItemConsumedQty(item))
+    }
+    const freshIngredients = await fetchIngredientsByIds([...rollbackByIngredient.keys()])
+    const foundIngredientIds = new Set(freshIngredients.map(i => String(i.id)))
+    for (const key of rollbackByIngredient.keys()) {
+      if (!foundIngredientIds.has(key)) unlinkedNames.push(`库存已删除（${key.slice(0, 8)}）`)
+    }
     const clipWarnings = []
 
     for (const ingredient of freshIngredients) {
@@ -443,9 +452,11 @@ function EditDiningModal({ record, onClose, onSaved }) {
       const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
 
       // 如果被边界限制，记录提示
-      if (newConsumed !== desiredConsumed) {
+      if (currentConsumed <= 0) {
+        clipWarnings.push(`・${ingredient.name_zh}：库存当前消耗量为 0，无可回退（请求回退 ${rollbackQty}${ingredient.unit}）`)
+      } else if (newConsumed !== desiredConsumed) {
         if (desiredConsumed < 0) {
-          clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+          clipWarnings.push(`・${ingredient.name_zh}：可回退量不足，仅能回退 ${currentConsumed}${ingredient.unit}（请求回退 ${rollbackQty}${ingredient.unit}），已设为 0`)
         } else if (desiredConsumed > totalQty) {
           clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
         }
@@ -462,8 +473,12 @@ function EditDiningModal({ record, onClose, onSaved }) {
       }
     }
 
+    if (unlinkedNames.length > 0) {
+      clipWarnings.unshift(`・未关联库存、无法回退：${unlinkedNames.join('、')}`)
+    }
+
     if (clipWarnings.length > 0) {
-      window.alert(`⚠️ 以下食材库存调整时已被自动限制到合理范围：\n\n${clipWarnings.join('\n')}`)
+      window.alert(`⚠️ 库存回退提示：\n\n${clipWarnings.join('\n')}`)
     }
   }
 
@@ -573,38 +588,45 @@ function EditDiningModal({ record, onClose, onSaved }) {
               }
             })
           })) {
+            // 按库存 id 汇总本次编辑的 delta：同一库存被多条明细引用时合并，避免相互覆盖
+            const deltaByIngredient = new Map()
+            const nameByIngredient = new Map()
+            for (const { item, delta } of qtyChangedItems) {
+              const key = String(item.ingredient_id)
+              deltaByIngredient.set(key, (deltaByIngredient.get(key) || 0) + delta)
+              nameByIngredient.set(key, item.name_zh)
+            }
+
             // 从数据库实时获取最新数据，避免使用过期 state
-            const ingredientIds = [...new Set(qtyChangedItems.map(({ item }) => item.ingredient_id).filter(Boolean))]
-            const freshIngredients = await fetchIngredientsByIds(ingredientIds)
-            const ingredientById = new Map(freshIngredients.map(i => [String(i.id), i]))
+            const freshIngredients = await fetchIngredientsByIds([...deltaByIngredient.keys()])
             const clipWarnings = []
 
-            for (const { item, delta } of qtyChangedItems) {
-              const ingredient = ingredientById.get(String(item.ingredient_id))
-              if (ingredient) {
-                const currentConsumed = Number(ingredient.consumed_quantity) || 0
-                const totalQty = Number(ingredient.quantity) || 0
-                const desiredConsumed = parseFloat((currentConsumed + delta).toFixed(2))
-                // 夹紧到 [0, totalQty] 范围
-                const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
+            for (const ingredient of freshIngredients) {
+              const delta = deltaByIngredient.get(String(ingredient.id)) || 0
+              const item = { name_zh: nameByIngredient.get(String(ingredient.id)) || ingredient.name_zh }
+              if (Math.abs(delta) < 0.001) continue
+              const currentConsumed = Number(ingredient.consumed_quantity) || 0
+              const totalQty = Number(ingredient.quantity) || 0
+              const desiredConsumed = parseFloat((currentConsumed + delta).toFixed(2))
+              // 夹紧到 [0, totalQty] 范围
+              const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
 
-                // 如果被边界限制，记录提示
-                if (newConsumed !== desiredConsumed) {
-                  if (desiredConsumed < 0) {
-                    clipWarnings.push(`・${item.name_zh}：库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
-                  } else if (desiredConsumed > totalQty) {
-                    clipWarnings.push(`・${item.name_zh}：库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
-                  }
+              // 如果被边界限制，记录提示
+              if (newConsumed !== desiredConsumed) {
+                if (desiredConsumed < 0) {
+                  clipWarnings.push(`・${item.name_zh}：库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+                } else if (desiredConsumed > totalQty) {
+                  clipWarnings.push(`・${item.name_zh}：库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
                 }
+              }
 
-                const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
-                await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
-                if (ingredient.purchase_item_id) {
-                  await supabase.from('purchase_items').update({
-                    consumed_quantity: newConsumed,
-                    is_fully_consumed: isFullyConsumed
-                  }).eq('id', ingredient.purchase_item_id)
-                }
+              const isFullyConsumed = totalQty > 0 && newConsumed >= totalQty
+              await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ingredient.id)
+              if (ingredient.purchase_item_id) {
+                await supabase.from('purchase_items').update({
+                  consumed_quantity: newConsumed,
+                  is_fully_consumed: isFullyConsumed
+                }).eq('id', ingredient.purchase_item_id)
               }
             }
 
@@ -947,6 +969,7 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
     setSaving(true)
     try {
       const entries = Object.entries(selected)
+      const overflowWarnings = []
       for (const [ingId, s] of entries) {
         const ing = findIngredientById(ingredients, ingId)
         if (!ing) continue
@@ -974,16 +997,20 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
         }
 
         if (s.updateConsumed) {
-          const newConsumed = Math.min(
-            (ing.consumed_quantity || 0) + s.qty,
-            ing.quantity || 0
-          )
+          const desiredConsumed = parseFloat(((ing.consumed_quantity || 0) + s.qty).toFixed(2))
+          const newConsumed = Math.min(desiredConsumed, ing.quantity || 0)
+          if (newConsumed < desiredConsumed) {
+            overflowWarnings.push(`・${ing.name_zh}：本次同步 ${s.qty}${ing.unit} 超出剩余可消耗量，库存仅更新到总数 ${ing.quantity}${ing.unit}`)
+          }
           const isFullyConsumed = newConsumed >= (ing.quantity || 0)
           await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', ing.id)
           if (ing.purchase_item_id && isFullyConsumed) {
             await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
           }
         }
+      }
+      if (overflowWarnings.length > 0) {
+        alert(`⚠️ 以下食材的食用量同步被限制：\n\n${overflowWarnings.join('\n')}`)
       }
       await supabase.from('dining_history').update({ home_cost: Math.round(totalCost * 10) / 10 }).eq('id', diningId)
     } catch (e) {
@@ -1349,16 +1376,24 @@ function AddDiningModal({ onClose, onSaved }) {
         }
 
         if (diningType === 'home') {
+          const overflowWarnings = []
           for (const[id, s] of Object.entries(homeSelected)) {
             if (!s.updateConsumed) continue
             const ing = findIngredientById(ingredients, id)
             if (!ing) continue
-            const newConsumed = parseFloat(Math.min((ing.consumed_quantity || 0) + s.qty, ing.quantity || 0).toFixed(2))
+            const desiredConsumed = parseFloat(((ing.consumed_quantity || 0) + s.qty).toFixed(2))
+            const newConsumed = parseFloat(Math.min(desiredConsumed, ing.quantity || 0).toFixed(2))
             const isFully = newConsumed >= (ing.quantity || 0)
+            if (newConsumed < desiredConsumed) {
+              overflowWarnings.push(`・${ing.name_zh}：本次同步 ${s.qty}${ing.unit} 超出剩余可消耗量，库存仅更新到总数 ${ing.quantity}${ing.unit}`)
+            }
             await supabase.from('ingredients').update({ consumed_quantity: newConsumed }).eq('id', id)
             if (ing.purchase_item_id && isFully) {
               await supabase.from('purchase_items').update({ is_fully_consumed: true, consumed_quantity: newConsumed }).eq('id', ing.purchase_item_id)
             }
+          }
+          if (overflowWarnings.length > 0) {
+            alert(`⚠️ 以下食材的食用量同步被限制：\n\n${overflowWarnings.join('\n')}`)
           }
         }
         
@@ -1834,14 +1869,18 @@ export default function DiningHistory() {
       if (alsoRollback) {
         const rollbackItems = (record.dining_items || []).filter(i => i.ingredient_id && i.update_consumed && getDiningItemConsumedQty(i) > 0)
         if (rollbackItems.length > 0) {
-          const rollbackByIngredient = rollbackItems.reduce((map, item) => {
+          // 按库存 id 汇总回退量：同一库存被多条明细引用时合并，避免相互覆盖
+          const rollbackByIngredient = new Map()
+          for (const item of rollbackItems) {
             const key = String(item.ingredient_id)
-            map.set(key, (map.get(key) || 0) + getDiningItemConsumedQty(item))
-            return map
-          }, new Map())
-          const ingredientIds = [...rollbackByIngredient.keys()]
-          const freshIngredients = await fetchIngredientsByIds(ingredientIds)
+            rollbackByIngredient.set(key, (rollbackByIngredient.get(key) || 0) + getDiningItemConsumedQty(item))
+          }
+          const freshIngredients = await fetchIngredientsByIds([...rollbackByIngredient.keys()])
+          const foundIngredientIds = new Set(freshIngredients.map(i => String(i.id)))
           const clipWarnings = []
+          for (const key of rollbackByIngredient.keys()) {
+            if (!foundIngredientIds.has(key)) clipWarnings.push(`・库存已删除（${key.slice(0, 8)}），无法回退`)
+          }
 
           for (const ingredient of freshIngredients) {
             const rollbackQty = rollbackByIngredient.get(String(ingredient.id)) || 0
@@ -1850,9 +1889,11 @@ export default function DiningHistory() {
             const desiredConsumed = parseFloat((currentConsumed - rollbackQty).toFixed(2))
             const newConsumed = Math.min(totalQty, Math.max(0, desiredConsumed))
 
-            if (newConsumed !== desiredConsumed) {
+            if (currentConsumed <= 0) {
+              clipWarnings.push(`・${ingredient.name_zh}：库存当前消耗量为 0，无可回退（请求回退 ${rollbackQty}${ingredient.unit}）`)
+            } else if (newConsumed !== desiredConsumed) {
               if (desiredConsumed < 0) {
-                clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能为负，已设为 0（原计算值为 ${desiredConsumed}）`)
+                clipWarnings.push(`・${ingredient.name_zh}：可回退量不足，仅能回退 ${currentConsumed}${ingredient.unit}（请求回退 ${rollbackQty}${ingredient.unit}），已设为 0`)
               } else if (desiredConsumed > totalQty) {
                 clipWarnings.push(`・${ingredient.name_zh}：回退后库存消耗量不能超过总数 ${totalQty}${ingredient.unit}，已设为 ${totalQty}${ingredient.unit}（原计算值为 ${desiredConsumed}）`)
               }
@@ -1869,7 +1910,7 @@ export default function DiningHistory() {
           }
 
           if (clipWarnings.length > 0) {
-            window.alert(`⚠️ 以下食材库存调整时已被自动限制到合理范围：\n\n${clipWarnings.join('\n')}`)
+            window.alert(`⚠️ 库存回退提示：\n\n${clipWarnings.join('\n')}`)
           }
         }
       }
