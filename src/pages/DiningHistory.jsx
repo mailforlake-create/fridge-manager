@@ -484,6 +484,41 @@ function EditDiningModal({ record, onClose, onSaved }) {
 
   const existingIngIds = new Set(items.map(i => i.ingredient_id).filter(Boolean).map(String))
 
+  // 区分同名明细：库存信息（购买日期/商家/单价/剩余）+ 同名序号
+  const ingredientById = new Map(ingredients.map(ing => [String(ing.id), ing]))
+  const nameCounts = new Map()
+  items.forEach(item => {
+    const key = item.name_zh || ''
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
+  })
+  const sameNameSeen = new Map()
+  const rowMetaList = items.map(item => {
+    const key = item.name_zh || ''
+    const index = (sameNameSeen.get(key) || 0) + 1
+    sameNameSeen.set(key, index)
+    const hasId = Boolean(item.ingredient_id)
+    return {
+      ing: hasId ? (ingredientById.get(String(item.ingredient_id)) || null) : null,
+      missingStock: hasId && !ingredientById.has(String(item.ingredient_id)),
+      duplicate: (nameCounts.get(key) || 1) > 1,
+      index,
+      total: nameCounts.get(key) || 1,
+    }
+  })
+  function rowInfo(item, meta) {
+    if (meta.missingStock) return { text: '⚠️ 库存已删除（无法回退）', color: '#ef4444' }
+    if (!item.ingredient_id) return { text: '⚠️ 未关联库存（无法回退）', color: '#f59e0b' }
+    const ing = meta.ing
+    const history = ing?.purchase_item?.purchase_history
+    const remaining = ing ? parseFloat(((Number(ing.quantity) || 0) - (Number(ing.consumed_quantity) || 0)).toFixed(2)) : null
+    const parts = []
+    parts.push(history?.purchased_at ? `📅 ${history.purchased_at}` : '📅 无购买日期')
+    if (history?.store_name) parts.push(`🏪 ${history.store_name}`)
+    if (ing?.purchase_item?.price) parts.push(`单价 ¥${formatDecimal(ing.purchase_item.price)}`)
+    if (remaining !== null) parts.push(`剩余 ${formatDecimal(remaining)}${ing.unit || ''}`)
+    return { text: parts.join(' · '), color: '#94a3b8' }
+  }
+
   async function save() {
     setSaving(true)
     try {
@@ -798,6 +833,8 @@ function EditDiningModal({ record, onClose, onSaved }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {items.map((item, i) => {
                   const isActiveStepItem = activeEditItemIndex === i
+                  const meta = rowMetaList[i] || {}
+                  const info = rowInfo(item, meta)
                   return (
                     <div key={i} onClick={() => setActiveEditItemIndex(i)} style={{
                       background: '#f0fdf4',
@@ -810,7 +847,13 @@ function EditDiningModal({ record, onClose, onSaved }) {
                       cursor: 'pointer'
                     }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{item.name_zh}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {item.name_zh}
+                          {meta.duplicate && (
+                            <span style={{ marginLeft: 6, fontSize: 10, color: '#0369a1', background: '#e0f2fe', borderRadius: 4, padding: '1px 4px', fontWeight: 600 }}>同名 {meta.index}/{meta.total}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: info.color }}>{info.text}</div>
                         <div style={{ fontSize: 11, color: isActiveStepItem ? '#16a34a' : '#94a3b8' }}>
                           {isActiveStepItem ? '当前步长应用对象' : '点击此食材设为步长应用对象'}
                         </div>
@@ -850,7 +893,7 @@ function EditDiningModal({ record, onClose, onSaved }) {
                       <button onClick={e => {
                         e.stopPropagation()
                         setItems(currentItems => currentItems.filter((_, j) => j !== i))
-                      }} style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
+                      }} title={info.text} style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
                     </div>
                   )
                 })}
