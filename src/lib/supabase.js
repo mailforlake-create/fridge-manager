@@ -41,3 +41,22 @@ export async function batchFetchIn(table, column, ids, select) {
 
   return results.flat()
 }
+
+// 分页拉取全量行，规避 PostgREST max_rows=1000 的静默截断
+// 用法：fetchAllRows('ingredients', 'id,name_zh', { order: 'created_at', ascending: false })
+export async function fetchAllRows(table, select, { order, ascending = false } = {}) {
+  const PAGE_SIZE = 1000
+  const all = []
+  let from = 0
+  while (true) {
+    let query = supabase.from(table).select(select)
+    if (order) query = query.order(order, { ascending })
+    const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
+    if (error) { console.warn(`[fetchAllRows] ${table} 查询失败:`, error.message); break }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return all
+}

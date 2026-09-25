@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
-import { supabase, batchFetchIn } from '../lib/supabase'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { supabase, batchFetchIn, fetchAllRows } from '../lib/supabase'
 import { uploadPhoto, deletePhoto } from '../lib/imageUtils'
 import PhotoViewer from '../components/PhotoViewer'
 import ConfirmModal from '../components/ConfirmModal'
@@ -403,18 +403,24 @@ function EditDiningModal({ record, onClose, onSaved }) {
     })
   }, [items.length])
 
+  // 用 ref 保存当前明细，避免 fetchIngredients 依赖 items 触发 exhaustive-deps
+  const editItemsRef = useRef(items)
+  useEffect(() => { editItemsRef.current = items }, [items])
+
   async function fetchIngredients() {
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`
+    const rows = await fetchAllRows('ingredients', `
         *,
         purchase_item:purchase_item_id(
           price,
           purchase_history:history_id(store_name, purchased_at)
         )
-      `)
-      .order('created_at', { ascending: false })
-    setIngredients(await hydrateLatestPurchasePrices(data || []))
+      `, { order: 'created_at', ascending: false })
+    const loaded = await hydrateLatestPurchasePrices(rows)
+    // 兜底：补齐明细引用但未加载到的库存行，避免分页截断导致误判“库存已删除”
+    const loadedIds = new Set(loaded.map(i => String(i.id)))
+    const missingIds = [...new Set((editItemsRef.current || []).map(i => i.ingredient_id).filter(Boolean).map(String))].filter(id => !loadedIds.has(id))
+    const extra = missingIds.length ? await hydrateLatestPurchasePrices(await fetchIngredientsByIds(missingIds)) : []
+    setIngredients([...loaded, ...extra])
   }
 
   function calcCost(ing, qty) {
@@ -971,19 +977,24 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
     }
   },[dinedAt, existingItems])
 
+  // 用 ref 保存已有明细，避免 fetchIngredients 依赖 existingItems 触发 exhaustive-deps
+  const existingItemsRef = useRef(existingItems)
+  useEffect(() => { existingItemsRef.current = existingItems }, [existingItems])
+
   async function fetchIngredients() {
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`
+    const rows = await fetchAllRows('ingredients', `
         *,
         purchase_item:purchase_item_id(
           price,
           original_price,
           purchase_history:history_id(purchased_at)
         )
-      `)
-      .order('created_at', { ascending: false })
-    setIngredients(await hydrateLatestPurchasePrices(data || []))
+      `, { order: 'created_at', ascending: false })
+    const loaded = await hydrateLatestPurchasePrices(rows)
+    const loadedIds = new Set(loaded.map(i => String(i.id)))
+    const missingIds = [...new Set((existingItemsRef.current || []).map(i => i.ingredient_id).filter(Boolean).map(String))].filter(id => !loadedIds.has(id))
+    const extra = missingIds.length ? await hydrateLatestPurchasePrices(await fetchIngredientsByIds(missingIds)) : []
+    setIngredients([...loaded, ...extra])
   }
 
   const filtered = ingredients.filter(i =>
@@ -1261,17 +1272,14 @@ function AddDiningModal({ onClose, onSaved }) {
 
   async function fetchIngredients() {
     setLoadingIng(true)
-    const { data } = await supabase
-      .from('ingredients')
-      .select(`
+    const rows = await fetchAllRows('ingredients', `
         *,
         purchase_item:purchase_item_id(
           price,
           purchase_history:history_id(store_name, purchased_at)
         )
-      `)
-      .order('created_at', { ascending: false })
-    setIngredients(await hydrateLatestPurchasePrices(data || []))
+      `, { order: 'created_at', ascending: false })
+    setIngredients(await hydrateLatestPurchasePrices(rows))
     setLoadingIng(false)
   }
 

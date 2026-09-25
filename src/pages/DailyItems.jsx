@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import DailyItemCard from '../components/DailyItemCard'
 //import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
@@ -30,9 +30,7 @@ const DAILY_LOCS = settings.daily_locations
 
   async function fetchItems() {
     setLoading(true)
-    const { data } = await supabase
-      .from('daily_items')
-      .select(`
+    const rows = await fetchAllRows('daily_items', `
         *,
         purchase_item:purchase_item_id (
           price, original_price, is_discount, discount_info,
@@ -41,9 +39,8 @@ const DAILY_LOCS = settings.daily_locations
             purchased_at
           )
         )
-      `)
-      .order('created_at', { ascending: false })
-    setItems(data || [])
+      `, { order: 'created_at', ascending: false })
+    setItems(rows)
     setLoading(false)
   }
 
