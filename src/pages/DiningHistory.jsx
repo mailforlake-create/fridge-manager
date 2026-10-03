@@ -1195,6 +1195,88 @@ function IngredientSelectModal({ diningId, dinedAt, existingItems, onClose, onSa
   )
 }
 
+function CopyOutDiningModal({ onClose, onSelect }) {
+  const { settings } = useSettings()
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchOutDiningHistory() {
+      setLoading(true)
+      setError('')
+      try {
+        const outHistories = []
+        const PAGE_SIZE = 1000
+        let from = 0
+        while (true) {
+          const { data, error: historyError } = await supabase
+            .from('dining_history')
+            .select('id, meal_time, dined_at, dined_time, store_name, store_name_original, amount, original_amount, currency, memo, created_at')
+            .eq('dining_type', 'out')
+            .order('dined_at', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1)
+          if (historyError) throw historyError
+          outHistories.push(...(data || []))
+          if (!data || data.length < PAGE_SIZE) break
+          from += PAGE_SIZE
+        }
+        const items = await batchFetchIn('dining_items', 'dining_id', outHistories.map(history => history.id),
+          'dining_id, name_zh, name_original, category, quantity, unit, price, memo')
+        const itemsByDiningId = new Map()
+        ;(items || []).forEach(item => {
+          const list = itemsByDiningId.get(String(item.dining_id)) || []
+          list.push(item)
+          itemsByDiningId.set(String(item.dining_id), list)
+        })
+        if (!cancelled) setRecords(outHistories.map(history => ({
+          ...history,
+          dining_items: itemsByDiningId.get(String(history.id)) || []
+        })))
+      } catch (fetchError) {
+        if (!cancelled) setError(fetchError.message || '无法加载过往外食履历')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchOutDiningHistory()
+    return () => { cancelled = true }
+  }, [])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100 }}>
+      <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxWidth: 430, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>从过往外食履历复制</div>
+          <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>选择后将复制餐厅、餐次、时间、金额、备注和菜品；当前填写的日期会保留。</div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>加载履历中...</div>
+        ) : error ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#ef4444' }}>{error}</div>
+        ) : records.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>暂无过往外食履历</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {records.map(record => (
+              <button key={record.id} onClick={() => onSelect(record)} style={{ textAlign: 'left', padding: '12px', borderRadius: 10, border: '1.5px solid #fed7aa', background: '#fff7ed', color: '#431407' }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{record.store_name || '未命名餐厅'}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 5, fontSize: 12, color: '#9a3412' }}>
+                  <span>{record.dined_at || '无日期'}</span>
+                  <span style={{ fontWeight: 700 }}>{formatAmount(record.amount, settings)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AddDiningModal({ onClose, onSaved }) {
   const [outCurrency, setOutCurrency] = useState('JPY')
   const { settings } = useSettings()
@@ -1216,6 +1298,7 @@ function AddDiningModal({ onClose, onSaved }) {
   const [amount, setAmount] = useState('')
   const[outItems, setOutItems] = useState([])
   const [billData, setBillData] = useState(null)
+  const [showCopyOutHistory, setShowCopyOutHistory] = useState(false)
   
   // States to prevent button clashing and show progress
   const [loading, setLoading] = useState(false) 
@@ -1340,6 +1423,26 @@ function AddDiningModal({ onClose, onSaved }) {
     setOutItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
   },[])
 
+  function copyOutDining(record) {
+    const currency = record.currency || 'JPY'
+    setMealTime(record.meal_time || null)
+    setDinedTime(record.dined_time || '')
+    setStoreName(record.store_name || '')
+    setStoreNameOriginal(record.store_name_original || '')
+    setOutCurrency(currency)
+    setAmount(String(currency === 'JPY' ? (record.amount ?? '') : (record.original_amount ?? fromJPY(record.amount, currency, settings))))
+    setMemo(record.memo || '')
+    setOutItems((record.dining_items || []).map(item => ({
+      name_zh: item.name_zh || '', name_original: item.name_original || '', category: item.category || null,
+      quantity: item.quantity || 1, unit: item.unit || '份',
+      price: item.price == null ? '' : fromJPY(item.price, currency, settings), memo: item.memo || null
+    })))
+    setManualDishes([])
+    setBillData(null)
+    setOutMode('copy')
+    setShowCopyOutHistory(false)
+  }
+
   const canSave = diningType && (
     diningType === 'home' ? mealTime : (storeName.trim() && dinedAt && amount)
   )
@@ -1386,9 +1489,11 @@ function AddDiningModal({ onClose, onSaved }) {
               dining_id: dining.id,
               name_zh: item.name_zh,
               name_original: item.name_original || null,
+              category: item.category || null,
               quantity: Number(item.quantity) || 1,
               unit: item.unit || '份',
-              price: toStoredOutItemPrice(item.price)
+              price: toStoredOutItemPrice(item.price),
+              memo: item.memo || null
             })
           })
         }
@@ -1549,8 +1654,8 @@ function AddDiningModal({ onClose, onSaved }) {
           <>
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>录入方式</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[['bill','🧾 账单拍照'],['dish','📷 菜品拍照']].map(([id, label]) => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[['bill','🧾 账单拍照'],['dish','📷 菜品拍照'],['copy','📋 复制过往']].map(([id, label]) => (
                   <button key={id} onClick={() => setOutMode(id)} style={{
                     padding: '10px 0', borderRadius: 9, fontSize: 13, fontWeight: 600,
                     background: outMode === id ? '#f97316' : '#f1f5f9',
@@ -1559,6 +1664,15 @@ function AddDiningModal({ onClose, onSaved }) {
                 ))}
               </div>
             </div>
+
+            {outMode === 'copy' && (
+              <div style={{ marginBottom: 14 }}>
+                <button onClick={() => setShowCopyOutHistory(true)} style={{
+                  width: '100%', padding: '16px 12px', borderRadius: 12, border: '2px dashed #fed7aa',
+                  background: '#fff7ed', color: '#9a3412', fontWeight: 600
+                }}>📋 选择一条过往外食履历</button>
+              </div>
+            )}
 
             {outMode === 'bill' && (
               <div style={{ marginBottom: 14 }}>
@@ -1778,6 +1892,7 @@ function AddDiningModal({ onClose, onSaved }) {
           color: (canSave && !loading) ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700
         }}>{saving ? saveText : (loading ? '识别中...' : '保存记录')}</button>
       </div>
+      {showCopyOutHistory && <CopyOutDiningModal onClose={() => setShowCopyOutHistory(false)} onSelect={copyOutDining} />}
     </div>
   )
 }
