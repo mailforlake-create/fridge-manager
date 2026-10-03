@@ -1299,6 +1299,7 @@ function AddDiningModal({ onClose, onSaved }) {
   const[outItems, setOutItems] = useState([])
   const [billData, setBillData] = useState(null)
   const [showCopyOutHistory, setShowCopyOutHistory] = useState(false)
+  const [copiedFrom, setCopiedFrom] = useState(null)
   
   // States to prevent button clashing and show progress
   const [loading, setLoading] = useState(false) 
@@ -1439,6 +1440,7 @@ function AddDiningModal({ onClose, onSaved }) {
     })))
     setManualDishes([])
     setBillData(null)
+    setCopiedFrom({ storeName: record.store_name || '未命名餐厅', dinedAt: record.dined_at || '' })
     setOutMode('copy')
     setShowCopyOutHistory(false)
   }
@@ -1670,7 +1672,34 @@ function AddDiningModal({ onClose, onSaved }) {
                 <button onClick={() => setShowCopyOutHistory(true)} style={{
                   width: '100%', padding: '16px 12px', borderRadius: 12, border: '2px dashed #fed7aa',
                   background: '#fff7ed', color: '#9a3412', fontWeight: 600
-                }}>📋 选择一条过往外食履历</button>
+                }}>{copiedFrom ? '📋 更换过往外食履历' : '📋 选择一条过往外食履历'}</button>
+                {copiedFrom && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 12 }}>
+                    已复制：{copiedFrom.storeName}{copiedFrom.dinedAt ? `（${copiedFrom.dinedAt}）` : ''}，共 {outItems.length} 道菜品明细。
+                  </div>
+                )}
+                {outItems.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                    {outItems.map((item, i) => (
+                      <div key={i} style={{ background: '#f8fafc', borderRadius: 9, padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                          <input style={{ ...smallField, flex: 1 }} value={item.name_zh} placeholder="菜品名称"
+                            onChange={e => setOutItemField(i, 'name_zh', e.target.value)} />
+                          <button onClick={() => setOutItems(items => items.filter((_, j) => j !== i))}
+                            style={{ background: 'none', color: '#cbd5e1', fontSize: 18, lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input style={{ ...smallField, flex: 1 }} type="number" value={item.quantity}
+                            aria-label={`${item.name_zh || '菜品'}份数`} onChange={e => setOutItemField(i, 'quantity', e.target.value)} />
+                          <input style={{ ...smallField, flex: 1 }} value={item.unit} placeholder="单位"
+                            aria-label={`${item.name_zh || '菜品'}单位`} onChange={e => setOutItemField(i, 'unit', e.target.value)} />
+                          <input style={{ ...smallField, flex: 1 }} type="number" value={item.price}
+                            placeholder="单价" aria-label={`${item.name_zh || '菜品'}单价`} onChange={e => setOutItemField(i, 'price', e.target.value)} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
