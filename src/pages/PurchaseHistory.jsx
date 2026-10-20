@@ -1014,7 +1014,6 @@ export default function PurchaseHistory() {
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [syncToIngredients, setSyncToIngredients] = useState(true)
   const [syncToDining, setSyncToDining] = useState(true)
-  const [syncDeleteStock, setSyncDeleteStock] = useState(true)
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
 const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
@@ -1138,27 +1137,40 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   }
 
   function confirmDeleteItem(historyId, item) {
-    setSyncDeleteStock(true)
-    setConfirm({ historyId, item })
+    setConfirm({
+      title: `删除「${item.name_zh || '该明细'}」`,
+      message: item.add_to_fridge
+        ? '同时删除已存入库存的该物品？（会一并清理相关自炊消耗明细）'
+        : '确认从购物履历中删除该明细？',
+      yesText: '是，同步删除库存物品',
+      noText: '否，仅删除履历明细',
+      onYes: item.add_to_fridge ? () => deleteItem(historyId, item, true) : null,
+      onNo: item.add_to_fridge ? () => deleteItem(historyId, item, false) : null,
+      onConfirm: item.add_to_fridge ? null : () => deleteItem(historyId, item, false),
+      onCancel: () => setConfirm(null)
+    })
   }
 
-  async function deleteItem() {
-    const { historyId, item } = confirm
-    await supabase.from('purchase_items').delete().eq('id', item.id)
-    if (syncDeleteStock && item.add_to_fridge) {
+  async function deleteItem(historyId, item, alsoFridge) {
+    setConfirm(null)
+    // 先清库存（内含自炊消耗明细的联动清理），再删履历明细，避免外键约束导致静默失败
+    if (alsoFridge && item.add_to_fridge) {
       try {
         await removeStockByPurchaseItems([item.id])
       } catch (e) {
         alert('清理关联消耗明细失败：' + e.message)
       }
     }
-    setHistory(history.map(h =>
+    const { error } = await supabase.from('purchase_items').delete().eq('id', item.id)
+    if (error) {
+      alert('删除购物履历明细失败：' + error.message)
+      return
+    }
+    setHistory(prev => prev.map(h =>
       h.id === historyId
         ? { ...h, purchase_items: h.purchase_items.filter(i => i.id !== item.id) }
         : h
     ))
-    setConfirm(null)
-    setSyncDeleteStock(true)
   }
 
   // --- BUG FIX STARTS HERE ---
@@ -1586,12 +1598,12 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
           
           {detailItem && <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
           {confirm && (
-            <div style={{
+            <div onClick={() => setConfirm(null)} style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               zIndex: 1000, padding: 24
             }}>
-              <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>{confirm.title}</div>
                 {confirm.message && (
                   <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>{confirm.message}</div>
@@ -1601,15 +1613,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                     <button onClick={confirm.onYes} style={{
                       padding: '11px 0', borderRadius: 10, background: '#ef4444',
                       color: '#fff', fontSize: 15, fontWeight: 700
-                    }}>是，同步更新物品库存</button>
+                    }}>{confirm.yesText || '是，同步更新物品库存'}</button>
                   )}
                   {(confirm.onNo || confirm.onConfirm) && (
                     <button onClick={confirm.onNo || confirm.onConfirm} style={{
                       padding: '11px 0', borderRadius: 10, background: '#f1f5f9',
                       color: '#475569', fontSize: 15, fontWeight: 600
-                    }}>{confirm.onYes ? '否，仅操作履历' : '确认删除'}</button>
+                    }}>{confirm.noText || (confirm.onYes ? '否，仅操作履历' : '确认删除')}</button>
                   )}
-                  <button onClick={confirm.onCancel} style={{
+                  <button onClick={confirm.onCancel || (() => setConfirm(null))} style={{
                     padding: '11px 0', borderRadius: 10, background: '#fff',
                     color: '#94a3b8', fontSize: 14, border: '1px solid #e2e8f0'
                   }}>取消</button>
