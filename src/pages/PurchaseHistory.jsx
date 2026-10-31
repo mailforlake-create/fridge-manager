@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase, batchFetchIn } from '../lib/supabase'
 import { removeStockByPurchaseItems } from '../lib/diningStock'
 import DiningHistory from './DiningHistory'
-import { recognizeReceipt } from '../lib/aiRecognition'
+import { recognizeReceipt, recognizeReceiptItem } from '../lib/aiRecognition'
+import { mergeRecognizedReceiptItem } from '../lib/receiptItem'
 import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, DAILY_CATEGORIES as DEFAULT_DAILY_CATS, UNITS as DEFAULT_UNITS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 import { formatAmount, getCurrencySymbol, toJPY } from '../lib/currency'
@@ -341,7 +342,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   async function handleFile(file) {
     setLoading(true)
     try {
-      const data = await recognizeReceipt(file)
+      const data = await recognizeReceipt(file, settings)
       if (data && data.items) {
         setReceiptData(data)
         setStoreName(data.store_name || '')
@@ -648,19 +649,31 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   )
 }
 
+let manualItemSeq = 0
+function createManualItem() {
+  manualItemSeq += 1
+  return {
+    _id: `manual_${Date.now()}_${manualItemSeq}`,
+    name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
+    price: '', original_price: '', is_discount: false, discount_info: '', memo: '',
+    expiry_date: '', add_to_fridge: true
+  }
+}
+
 function ManualReceiptModal({ onClose, onSaved }) {
-  const isDailyCategory = (category) => DAILY_CATS.includes(category)
+  const { settings } = useSettings()
+  const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
+  const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
+  const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
   const [header, setHeader] = useState({
     store_name: '',
     store_name_original: '',
     purchased_at: new Date().toISOString().split('T')[0],
     total_amount: ''
   })
-  const [items, setItems] = useState([{
-    name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
-    price: '', original_price: '', is_discount: false, discount_info: '', memo: '',
-    expiry_date: '', add_to_fridge: true
-  }])
+  const [items, setItems] = useState([createManualItem()])
+  const [recognizing, setRecognizing] = useState({})
+  const photoTargetRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [showManualStorageResult, setShowManualStorageResult] = useState(false)
   const [manualStorageItems, setManualStorageItems] = useState([])
@@ -683,15 +696,43 @@ function ManualReceiptModal({ onClose, onSaved }) {
   }
 
   function addItem() {
-    setItems(i => [...i, {
-      name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
-      price: '', original_price: '', is_discount: false, discount_info: '', memo: '',
-      expiry_date: '', add_to_fridge: true
-    }])
+    setItems(i => [...i, createManualItem()])
   }
 
-  function removeItem(i) {
-    setItems(items => items.filter((_, j) => j !== i))
+  function removeItem(id) {
+    setItems(items => items.filter(item => item._id !== id))
+  }
+
+  function pickItemPhoto(id) {
+    photoTargetRef.current = id
+    document.getElementById('manual-item-photo-input')?.click()
+  }
+
+  async function handleItemPhoto(file) {
+    const targetId = photoTargetRef.current
+    photoTargetRef.current = null
+    if (!file || !targetId) return
+    setRecognizing(r => ({ ...r, [targetId]: true }))
+    try {
+      const data = await recognizeReceiptItem(file, settings)
+      if (!data) {
+        alert('识别失败，请重新拍摄')
+        return
+      }
+      setItems(prev => prev.map(item => (
+        item._id === targetId
+          ? mergeRecognizedReceiptItem(item, data, { foodCats: FOOD_CATS, dailyCats: DAILY_CATS, units: UNITS })
+          : item
+      )))
+    } catch (e) {
+      alert('识别失败：' + e.message)
+    } finally {
+      setRecognizing(r => {
+        const next = { ...r }
+        delete next[targetId]
+        return next
+      })
+    }
   }
 
   async function save() {
@@ -876,20 +917,36 @@ function ManualReceiptModal({ onClose, onSaved }) {
           商品明细（{items.length} 件）
         </div>
 
+        <input id="manual-item-photo-input" type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            handleItemPhoto(file)
+          }} />
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
           {items.map((item, i) => (
-            <div key={i} style={{
+            <div key={item._id} style={{
               background: '#f8fafc', borderRadius: 12, padding: 12,
               border: '1.5px solid #e2e8f0'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>第 {i + 1} 件</div>
-                {items.length > 1 && (
-                  <button onClick={() => removeItem(i)} style={{
-                    background: '#fef2f2', color: '#ef4444', fontSize: 12,
-                    padding: '2px 8px', borderRadius: 6, fontWeight: 600
-                  }}>删除</button>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => pickItemPhoto(item._id)} disabled={!!recognizing[item._id]} style={{
+                    background: recognizing[item._id] ? '#f1f5f9' : '#f0fdf4',
+                    color: recognizing[item._id] ? '#94a3b8' : '#16a34a',
+                    fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                    border: '1px solid', borderColor: recognizing[item._id] ? '#e2e8f0' : '#86efac',
+                    cursor: recognizing[item._id] ? 'not-allowed' : 'pointer'
+                  }}>{recognizing[item._id] ? '识别中…' : '📷 拍照识别'}</button>
+                  {items.length > 1 && (
+                    <button onClick={() => removeItem(item._id)} style={{
+                      background: '#fef2f2', color: '#ef4444', fontSize: 12,
+                      padding: '2px 8px', borderRadius: 6, fontWeight: 600
+                    }}>删除</button>
+                  )}
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div style={{ display: 'flex', gap: 6 }}>

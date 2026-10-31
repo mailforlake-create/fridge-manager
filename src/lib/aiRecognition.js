@@ -1,4 +1,5 @@
-import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, DAILY_UNITS, isDailyCategory } from './categories'
+import { FOOD_CATEGORIES, DAILY_CATEGORIES, UNITS, DAILY_UNITS } from './categories'
+import { parseReceiptItemJSON, normalizeReceiptItem } from './receiptItem'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -51,9 +52,9 @@ export function calcExpiry(mfgDate, shelfDays) {
   return d.toISOString().split('T')[0]
 }
 
-export async function recognizePhoto(file) {
-  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
-  const foodUnits = (categories.food_units || UNITS).join('/')
+export async function recognizePhoto(file, categories = {}) {
+  const foodCats = (categories.food_categories?.length ? categories.food_categories : FOOD_CATEGORIES).join('/')
+  const foodUnits = (categories.food_units?.length ? categories.food_units : UNITS).join('/')
   const base64 = await fileToBase64(file)
   const prompt = `你是食材识别助手。识别图片中所有食材，输出JSON数组，每项包含：
 name_zh(中文名), name_original(原文，可空), category(${foodCats}),
@@ -69,15 +70,72 @@ quantity(数字), unit(${foodUnits}), expiry_date(YYYY-MM-DD或空字符串)
   return parseIngredients(text)
 }
 
+// 识别可用的分类 / 单位列表，优先使用设置里的自定义配置
+function buildReceiptCategoryLists(categories = {}) {
+  const foodCats = categories.food_categories?.length ? categories.food_categories : FOOD_CATEGORIES
+  const dailyCats = categories.daily_categories?.length ? categories.daily_categories : DAILY_CATEGORIES
+  const units = [...new Set([
+    ...(categories.food_units?.length ? categories.food_units : UNITS),
+    ...(categories.daily_units?.length ? categories.daily_units : DAILY_UNITS)
+  ])]
+  return { foodCats, dailyCats, units }
+}
+
+// 单件商品拍照识别：识别一张商品包装 / 标签 / 价签照片，返回与小票 item 相同结构的一条商品
+export async function recognizeReceiptItem(file, settings = {}) {
+  if (!file) return null
+  const base64 = await fileToBase64(file)
+  const mediaType = file.type || 'image/jpeg'
+  const { foodCats, dailyCats, units } = buildReceiptCategoryLists(settings)
+  const foodCatText = foodCats.join('/')
+  const dailyCatText = dailyCats.join('/')
+  const unitText = units.join('/')
+
+  const prompt = `你是商品信息识别助手。识别图片中【最主要的一件商品】（商品包装、背标、价签或单件商品照片均可），输出JSON对象，只输出JSON不要说明：
+{
+  "name_zh": "中文名",
+  "name_original": "原文完整保留",
+  "category": "${foodCatText}/${dailyCatText}/非食材/其他",
+  "quantity": 购买件数,
+  "unit": "${unitText}",
+  "price": 实付总价或null,
+  "original_price": 原价总价或null,
+  "is_discount": false,
+  "discount_info": ""
+}
+
+规则：
+1. 只识别图片中占主导的那一件商品，忽略背景里的其他商品
+2. name_zh 用中文常用名称；name_original 保留包装上的原文（日文/英文等），没有则空字符串
+3. category 必须从给定分类中选择：食用品（${foodCatText}）、非食用品（${dailyCatText}）；无法归类填"其他"；完全不是食材/日用品填"非食材"
+4. unit 必须从给定单位中选择：${unitText}；无法判断填"个"
+5. quantity 是购买件数，默认 1；包装上的"2個入"等规格不算购买件数
+6. 价格规则（重要）：
+   - 图片中有价签/小票行/折扣贴纸时：price=实付总价（含税、已扣折扣），original_price=折扣前原价
+   - 有折扣（割引/値引/セール/○○円引/ポイント等）时 is_discount=true，discount_info 写折扣内容，如"割引-100円"
+   - 没有折扣时 is_discount=false，discount_info=""
+   - 完全看不到价格时 price=null、original_price=null
+7. 价格一律填总价，不是单价`
+
+  const text = await callAI([{
+    role: 'user',
+    content: [
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+      { type: 'text', text: prompt }
+    ]
+  }], { ...settings, ai_max_tokens: Number(settings.ai_max_tokens) || 4096 })
+
+  const item = normalizeReceiptItem(parseReceiptItemJSON(text))
+  return item?.name_zh ? item : null
+}
+
 export async function recognizeReceipt(file, categories = {}) {
   const base64 = await fileToBase64(file)
   const mediaType = file.type || 'image/jpeg'
-  const foodCats = (categories.food_categories || FOOD_CATEGORIES).join('/')
-  const dailyCats = (categories.daily_categories || DAILY_CATEGORIES).join('/')
-  const allUnits = [...new Set([
-    ...(categories.food_units || UNITS),
-    ...(categories.daily_units || DAILY_UNITS)
-  ])].join('/')
+  const { foodCats, dailyCats, units } = buildReceiptCategoryLists(categories)
+  const foodCatText = foodCats.join('/')
+  const dailyCatText = dailyCats.join('/')
+  const allUnits = units.join('/')
 
   const prompt = `识别这张购物小票，输出JSON，只输出JSON不要说明：
 {
@@ -86,7 +144,7 @@ export async function recognizeReceipt(file, categories = {}) {
   "purchased_at": "YYYY-MM-DD或空",
   "total_amount": 合计金额数字或null,
   "total_item_count": 小票上显示的总件数数字,
-  "items": [{"name_zh":"中文名","name_original":"原文完整保留","category":"${foodCats}/${dailyCats}/其他","quantity":购买件数,"unit":"${allUnits}","price":实付总价或null,"original_price":原价总价或null,"is_discount":false,"discount_info":""}]
+  "items": [{"name_zh":"中文名","name_original":"原文完整保留","category":"${foodCatText}/${dailyCatText}/其他","quantity":购买件数,"unit":"${allUnits}","price":实付总价或null,"original_price":原价总价或null,"is_discount":false,"discount_info":""}]
 }
 
 规则：
@@ -134,7 +192,9 @@ export async function recognizeReceipt(file, categories = {}) {
           while ((m = itemRegex.exec(itemStr)) !== null) {
             try {
               completeItems.push(JSON.parse(m[0]))
-            } catch {}
+            } catch {
+              // 单个 item 片段被截断时跳过，继续解析后续片段
+            }
           }
           if (completeItems.length > 0) {
             // 提取头部信息
@@ -165,23 +225,14 @@ export async function recognizeReceipt(file, categories = {}) {
   }
 }
 
+  const items = result.items.map(normalizeReceiptItem).filter(Boolean)
+  if (!items.length) return null
+
   return {
     store_name: result.store_name || '未知商家',
     store_name_original: result.store_name_original || '',
     purchased_at: result.purchased_at || '',
     total_amount: result.total_amount || null,
-    items: result.items.map(item => ({
-      name_zh: item.name_zh || item.name_original || '',
-      name_original: item.name_original || '',
-      category: item.category || '其他',
-      quantity: item.quantity || 1,
-      unit: item.unit || '个',
-      price: item.price || null,
-      original_price: item.original_price || null,
-      is_discount: item.is_discount || false,
-      discount_info: item.discount_info || '',
-      expiry_date: '',
-      memo: ''
-    }))
+    items
   }
 }
