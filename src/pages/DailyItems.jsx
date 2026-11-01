@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
 import DailyItemCard from '../components/DailyItemCard'
-//import { DAILY_CATEGORIES, DAILY_UNITS, DAILY_LOCATIONS } from '../lib/categories'
+import { DAILY_CATEGORIES as DEFAULT_DAILY_CATS, DAILY_UNITS as DEFAULT_DAILY_UNITS, DAILY_LOCATIONS as DEFAULT_DAILY_LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 
 const EMPTY_FORM = {
@@ -22,9 +22,9 @@ export default function DailyItems() {
   const [showConsumed, setShowConsumed] = useState(false)
   const [dateFilter, setDateFilter] = useState('')
   const { settings } = useSettings()
-const DAILY_CATS = settings.daily_categories
-const DAILY_UNITS = settings.daily_units
-const DAILY_LOCS = settings.daily_locations
+  const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
+  const DAILY_UNITS = settings.daily_units?.length ? settings.daily_units : DEFAULT_DAILY_UNITS
+  const DAILY_LOCS = settings.daily_locations?.length ? settings.daily_locations : DEFAULT_DAILY_LOCATIONS
 
   useEffect(() => { fetchItems() }, [])
 
@@ -182,7 +182,7 @@ const DAILY_LOCS = settings.daily_locations
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>单位</div>
                 <select style={field} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u}>{u}</option>)}
+                  {DAILY_UNITS.map(u => <option key={u}>{u}</option>)}
                 </select>
               </div>
             </div>
@@ -191,7 +191,7 @@ const DAILY_LOCS = settings.daily_locations
               {DAILY_CATS.map(c => <option key={c}>{c}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8 }}>
-              {DAILY_CATS.map(([v, l]) => (
+              {DAILY_LOCS.map(([v, l]) => (
                 <button key={v} onClick={() => setForm(f => ({ ...f, location: v }))} style={{
                   flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13,
                   background: form.location === v ? '#3b82f6' : '#f1f5f9',

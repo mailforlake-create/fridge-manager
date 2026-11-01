@@ -4,23 +4,14 @@ import IngredientCard from '../components/IngredientCard'
 import ConfirmModal from '../components/ConfirmModal'
 import { collectConsumptionImpact, removeConsumptionDetails } from '../lib/diningStock'
 import DailyItems from './DailyItems'
-import { recognizePhoto, callAI, fileToBase64, calcExpiry } from '../lib/aiRecognition'
-//import { FOOD_CATEGORIES, UNITS, LOCATIONS } from '../lib/categories'
+import { recognizePhoto, callAI } from '../lib/aiRecognition'
+import { FOOD_CATEGORIES as DEFAULT_FOOD_CATS, UNITS as DEFAULT_UNITS, LOCATIONS as DEFAULT_LOCATIONS } from '../lib/categories'
 import { useSettings } from '../context/SettingsContext'
 
 const EMPTY_FORM = {
   name_zh: '', name_original: '', category: '',
   quantity: 1, unit: '个', expiry_date: '',
   mfg_date: '', shelf_days: '', location: 'fridge', memo: ''
-}
-
-function parseIngredients(text) {
-  try {
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
-    const match = cleaned.match(/\[[\s\S]*\]/)
-    if (match) return JSON.parse(match[0])
-  } catch (e) { console.error('解析失败：', e) }
-  return []
 }
 
 function calcExpiryLocal(mfgDate, shelfDays) {
@@ -34,8 +25,12 @@ function calcExpiryLocal(mfgDate, shelfDays) {
 function ManualAddModal({ onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [collapsedYears, setCollapsedYears] = useState({})
-  const [collapsedMonths, setCollapsedMonths] = useState({})
+  const { settings } = useSettings()
+
+  // 设置项缺失时回退到默认值，避免下拉框为空
+  const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
+  const FOOD_UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
+  const FOOD_LOCATIONS = settings.food_locations?.length ? settings.food_locations : DEFAULT_LOCATIONS
   const set = (k, v) => setForm(f => {
     const next = { ...f, [k]: v }
     if (k === 'mfg_date' || k === 'shelf_days') {
@@ -109,7 +104,7 @@ function ManualAddModal({ onClose, onSaved }) {
           <div>
             <div style={small}>存放位置</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[['fridge','冰箱'],['freezer','冷冻'],['pantry','常温']].map(([v, l]) => (
+              {FOOD_LOCATIONS.map(([v, l]) => (
                 <button key={v} onClick={() => set('location', v)} style={{
                   flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13,
                   background: form.location === v ? '#16a34a' : '#f1f5f9',
@@ -137,6 +132,8 @@ function PhotoAddModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { settings } = useSettings()
+  const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
+  const FOOD_UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 
   const smallField = {
     width: '100%', padding: '6px 8px', borderRadius: 7, fontSize: 13,
@@ -281,6 +278,8 @@ function BarcodeModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const { settings } = useSettings()
+  const FOOD_UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 
   const field = {
     width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 15,
@@ -642,7 +641,7 @@ export default function Fridge() {
                 const isFiltering = !!(search || filter !== 'all' || dateFilter)
                 // 找到有数据的最近月份
                 const allMonthKeys = []
-                Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).forEach(([year, months]) => {
+                Object.entries(groupedByYear).sort(([a], [b]) => b.localeCompare(a)).forEach(([, months]) => {
                   Object.keys(months).sort((a, b) => Number(b.replace('月','')) - Number(a.replace('月',''))).forEach(m => allMonthKeys.push(m))
                 })
                 const latestMonth = allMonthKeys.length > 0 ? allMonthKeys[0] : currentMonth
