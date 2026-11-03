@@ -708,6 +708,18 @@ function createManualItem() {
   }
 }
 
+// 履历编辑弹窗「追加商品」的空白项：带稳定 _id，供单件拍照定位使用
+let historyNewItemSeq = 0
+function createHistoryNewItem() {
+  historyNewItemSeq += 1
+  return {
+    _id: `history_new_${Date.now()}_${historyNewItemSeq}`,
+    name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
+    price: '', original_price: '', is_discount: false, discount_info: '',
+    expiry_date: '', memo: '', add_to_fridge: true, stock_type: 'food'
+  }
+}
+
 function ManualReceiptModal({ onClose, onSaved }) {
   const { settings } = useSettings()
   const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
@@ -1119,6 +1131,9 @@ export default function PurchaseHistory() {
   const [collapsedMonths, setCollapsedMonths] = useState({})
   const [syncToIngredients, setSyncToIngredients] = useState(true)
   const [syncToDining, setSyncToDining] = useState(true)
+  const [recognizingItemPhoto, setRecognizingItemPhoto] = useState(false)
+  const [recognizingNewItem, setRecognizingNewItem] = useState({})
+  const newItemPhotoTargetRef = useRef(null)
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
 const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
@@ -1409,6 +1424,64 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     fetchHistory()
   }
   // --- BUG FIX ENDS HERE ---
+
+  // 已保存商品：单件重拍（价格按小票录入货币换算为入库 JPY）
+  async function handleHistoryItemPhoto(file) {
+    if (!file || !editingItem) return
+    const targetItemId = editingItem.item.id
+    const entryCurrency = editingItem.currency || 'JPY'
+    setRecognizingItemPhoto(true)
+    try {
+      const data = await recognizeReceiptItem(file, settings)
+      if (!data) return alert('识别失败，请重新拍摄')
+      const incoming = {
+        ...data,
+        price: data.price == null ? null : toJPY(data.price, entryCurrency, settings),
+        original_price: data.original_price == null ? null : toJPY(data.original_price, entryCurrency, settings)
+      }
+      // 识别期间若已关闭/切换到别的商品，丢弃本次结果
+      setEditingItem(ei => ei && ei.item.id === targetItemId ? {
+        ...ei,
+        item: mergeRecognizedReceiptItem(ei.item, incoming, {
+          foodCats: FOOD_CATS, dailyCats: DAILY_CATS, units: UNITS
+        })
+      } : ei)
+    } catch (e) {
+      alert('识别失败：' + e.message)
+    } finally {
+      setRecognizingItemPhoto(false)
+    }
+  }
+
+  // 追加商品卡片：单件拍照识别（价格保持录入货币，保存时统一换算）
+  function pickNewItemPhoto(id) {
+    newItemPhotoTargetRef.current = id
+    document.getElementById('history-new-item-photo-input')?.click()
+  }
+
+  async function handleNewItemPhoto(file) {
+    const targetId = newItemPhotoTargetRef.current
+    newItemPhotoTargetRef.current = null
+    if (!file || !targetId) return
+    setRecognizingNewItem(r => ({ ...r, [targetId]: true }))
+    try {
+      const data = await recognizeReceiptItem(file, settings)
+      if (!data) return alert('识别失败，请重新拍摄')
+      setNewItems(prev => prev.map(item => (
+        item._id === targetId
+          ? mergeRecognizedReceiptItem(item, data, { foodCats: FOOD_CATS, dailyCats: DAILY_CATS, units: UNITS })
+          : item
+      )))
+    } catch (e) {
+      alert('识别失败：' + e.message)
+    } finally {
+      setRecognizingNewItem(r => {
+        const next = { ...r }
+        delete next[targetId]
+        return next
+      })
+    }
+  }
 
   function confirmSaveItem(item) {
     saveItemEdit(editingItem.historyId, item)
@@ -1775,11 +1848,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                   <button onClick={() => {
                     setShowAddItems(!showAddItems)
                     if (!showAddItems && newItems.length === 0) {
-                      setNewItems([{
-                        name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
-                        price: '', original_price: '', is_discount: false, discount_info: '',
-                        expiry_date: '', memo: '', add_to_fridge: true, stock_type: 'food'
-                      }])
+                      setNewItems([createHistoryNewItem()])
                     }
                   }} style={{
                     width: '100%', padding: '8px 0', borderRadius: 9, fontSize: 13, fontWeight: 600,
@@ -1790,14 +1859,29 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
                   {showAddItems && (
                     <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <input id="history-new-item-photo-input" type="file" accept="image/*" style={{ display: 'none' }}
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ''
+                          handleNewItemPhoto(file)
+                        }} />
                       {newItems.map((item, i) => (
-                        <div key={i} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px', border: '1.5px solid #e2e8f0' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div key={item._id || i} style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px', border: '1.5px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                             <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>商品 {i + 1}</div>
-                            {newItems.length > 1 && (
-                              <button onClick={() => setNewItems(items => items.filter((_, j) => j !== i))}
-                                style={{ background: '#fef2f2', color: '#ef4444', fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>删除</button>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <button onClick={() => pickNewItemPhoto(item._id)} disabled={!!recognizingNewItem[item._id]} style={{
+                                background: recognizingNewItem[item._id] ? '#f1f5f9' : '#f0fdf4',
+                                color: recognizingNewItem[item._id] ? '#94a3b8' : '#16a34a',
+                                fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                                border: '1px solid', borderColor: recognizingNewItem[item._id] ? '#e2e8f0' : '#86efac',
+                                cursor: recognizingNewItem[item._id] ? 'not-allowed' : 'pointer'
+                              }}>{recognizingNewItem[item._id] ? '识别中…' : '📷 拍照识别'}</button>
+                              {newItems.length > 1 && (
+                                <button onClick={() => setNewItems(items => items.filter((_, j) => j !== i))}
+                                  style={{ background: '#fef2f2', color: '#ef4444', fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>删除</button>
+                              )}
+                            </div>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                             <div style={{ display: 'flex', gap: 6 }}>
@@ -1879,11 +1963,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                           </div>
                         </div>
                       ))}
-                      <button onClick={() => setNewItems(i => [...i, {
-                        name_zh: '', name_original: '', category: '', quantity: 1, unit: '个',
-                        price: '', original_price: '', is_discount: false, discount_info: '',
-                        expiry_date: '', memo: '', add_to_fridge: true, stock_type: 'food'
-                      }])} style={{
+                      <button onClick={() => setNewItems(i => [...i, createHistoryNewItem()])} style={{
                         width: '100%', padding: '8px 0', borderRadius: 9,
                         background: '#f1f5f9', color: '#475569', fontSize: 13, fontWeight: 600
                       }}>+ 再添加一件</button>
@@ -1915,7 +1995,22 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                 background: '#fff', borderRadius: '16px 16px 0 0', padding: 20,
                 width: '100%', maxWidth: 430, maxHeight: '85vh', overflowY: 'auto'
               }}>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>编辑商品</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>编辑商品</div>
+                  <button onClick={() => document.getElementById('history-item-photo-input')?.click()} disabled={recognizingItemPhoto} style={{
+                    background: recognizingItemPhoto ? '#f1f5f9' : '#f0fdf4',
+                    color: recognizingItemPhoto ? '#94a3b8' : '#16a34a',
+                    fontSize: 12, padding: '3px 9px', borderRadius: 6, fontWeight: 600,
+                    border: '1px solid', borderColor: recognizingItemPhoto ? '#e2e8f0' : '#86efac',
+                    cursor: recognizingItemPhoto ? 'not-allowed' : 'pointer'
+                  }}>{recognizingItemPhoto ? '识别中…' : '📷 单件重拍'}</button>
+                </div>
+                <input id="history-item-photo-input" type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    handleHistoryItemPhoto(file)
+                  }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div>
                     <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>中文名称</div>
@@ -2206,7 +2301,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                                                       </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                                                      <button onClick={e => { e.stopPropagation(); setEditingItem({ historyId: h.id, item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' }, original_name_zh: item.name_zh }) }} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
+                                                      <button onClick={e => { e.stopPropagation(); setEditingItem({ historyId: h.id, currency: h.currency || 'JPY', item: { ...item, mfg_date: item.mfg_date || '', shelf_days: item.shelf_days || '' }, original_name_zh: item.name_zh }) }} style={{ background: '#f1f5f9', color: '#475569', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>编辑</button>
                                                       <button onClick={e => { e.stopPropagation(); confirmDeleteItem(h.id, item) }} style={{ background: '#fef2f2', color: '#ef4444', fontSize: 13, padding: '5px 10px', borderRadius: 7, fontWeight: 600 }}>删除</button>
                                                     </div>
                                                   </div>
