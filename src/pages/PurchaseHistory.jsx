@@ -315,6 +315,8 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [totalAmount, setTotalAmount] = useState('')
   const [showStorageResult, setShowStorageResult] = useState(false)
   const [storageItems, setStorageItems] = useState([])
+  const [recognizing, setRecognizing] = useState({})
+  const photoTargetRef = useRef(null)
   const { settings } = useSettings()
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
@@ -331,6 +333,35 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   const setItemField = useCallback((i, k, v) => {
     setAiItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
   }, [])
+
+  function pickItemPhoto(i) {
+    photoTargetRef.current = i
+    document.getElementById('scan-item-photo-input')?.click()
+  }
+
+  async function handleItemPhoto(file) {
+    const targetIndex = photoTargetRef.current
+    photoTargetRef.current = null
+    if (!file || targetIndex == null) return
+    setRecognizing(r => ({ ...r, [targetIndex]: true }))
+    try {
+      const data = await recognizeReceiptItem(file, settings)
+      if (!data) return alert('识别失败，请重新拍摄')
+      setAiItems(prev => prev.map((item, idx) => (
+        idx === targetIndex
+          ? mergeRecognizedReceiptItem(item, data, { foodCats: FOOD_CATS, dailyCats: DAILY_CATS, units: UNITS })
+          : item
+      )))
+    } catch (e) {
+      alert('识别失败：' + e.message)
+    } finally {
+      setRecognizing(r => {
+        const next = { ...r }
+        delete next[targetIndex]
+        return next
+      })
+    }
+  }
 
   function toStoredPurchaseItemPrice(price) {
     if (price === '' || price == null) return null
@@ -563,6 +594,13 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
               </div>
             </div>
 
+            <input id="scan-item-photo-input" type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                handleItemPhoto(file)
+              }} />
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
               {aiItems.map((item, i) => (
                 <div key={i} style={{
@@ -570,6 +608,16 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                   border: `1.5px solid ${selected[i] ? (isDailyCategory(item.category) ? '#3b82f6' : '#16a34a') : '#e2e8f0'}`,
                   borderRadius: 12, padding: '10px 12px'
                 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>第 {i + 1} 件</div>
+                    <button onClick={() => pickItemPhoto(i)} disabled={!!recognizing[i]} style={{
+                      background: recognizing[i] ? '#f1f5f9' : '#f0fdf4',
+                      color: recognizing[i] ? '#94a3b8' : '#16a34a',
+                      fontSize: 12, padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                      border: '1px solid', borderColor: recognizing[i] ? '#e2e8f0' : '#86efac',
+                      cursor: recognizing[i] ? 'not-allowed' : 'pointer'
+                    }}>{recognizing[i] ? '识别中…' : '📷 拍照识别'}</button>
+                  </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <div onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))} style={{
                       width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 2, cursor: 'pointer',
