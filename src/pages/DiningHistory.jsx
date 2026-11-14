@@ -1712,8 +1712,6 @@ function AddDiningModal({ onClose, onSaved }) {
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} id="bill-input"
                       onChange={e => {
                         const files = Array.from(e.target.files)
-                        const newItems = files.map(f => ({ file: f, url: URL.createObjectURL(f) }))
-                        setPendingPhotos(p => [...p, ...newItems]) 
                         e.target.value = ''
                         recognizeBill(files)
                       }}/>
@@ -1724,6 +1722,9 @@ function AddDiningModal({ onClose, onSaved }) {
                       <span style={{ fontSize: 32 }}>🧾</span>
                       <span style={{ fontWeight: 600 }}>拍摄或选择账单照片</span>
                     </button>
+                    <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 8 }}>
+                      账单照片仅用于识别，不会保存到履历
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

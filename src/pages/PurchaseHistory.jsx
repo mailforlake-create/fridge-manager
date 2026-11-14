@@ -334,6 +334,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
     setAiItems(items => { const n = [...items]; n[i] = { ...n[i], [k]: v }; return n })
   }, [])
 
+  function appendMissingItem() {
+    const index = aiItems.length
+    setAiItems(items => [
+      ...items,
+      { ...createManualItem(), mfg_date: '', shelf_days: '', stock_type: 'food' }
+    ])
+    setSelected(s => ({ ...s, [index]: true }))
+  }
+
   function pickItemPhoto(i) {
     photoTargetRef.current = i
     document.getElementById('scan-item-photo-input')?.click()
@@ -393,6 +402,9 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
   }
 
   async function save() {
+    if (aiItems.filter(item => item.name_zh?.trim()).length === 0) {
+      return alert('请至少填写一件商品')
+    }
     setSaving(true)
     try {
         const originalAmount = totalAmount !== '' ? Number(totalAmount) : null
@@ -411,7 +423,9 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
       if (history) {
         // 给每个 item 加临时 id，用于后续可靠映射
-        const itemsWithTempId = aiItems.map((item, i) => ({ ...item, _tempId: i }))
+        const itemsWithTempId = aiItems
+          .map((item, i) => ({ ...item, _tempId: i }))
+          .filter(item => item.name_zh?.trim())
 
         const historyItems = itemsWithTempId.map(item => ({
           history_id: history.id,
@@ -584,7 +598,7 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
-                识别到 {aiItems.length} 件，勾选入库：
+                商品 {aiItems.length} 件，勾选入库：
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => { const s = {}; aiItems.forEach((_, i) => { s[i] = true }); setSelected(s) }}
@@ -675,6 +689,15 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
               ))}
             </div>
 
+            <button onClick={appendMissingItem} style={{
+              width: '100%', padding: '10px 0', borderRadius: 10, marginBottom: 6,
+              background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600,
+              border: '1.5px dashed #cbd5e1'
+            }}>＋ 手动追加遗漏商品</button>
+            <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginBottom: 10 }}>
+              小票上有但未识别的商品，可在这里补充
+            </div>
+
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => { setReceiptData(null); setAiItems([]); setSelected({}); setStoreName(''); setStoreNameOriginal(''); setPurchasedAt(''); setTotalAmount('') }} style={{
                 flex: 1, padding: '12px 0', borderRadius: 12, background: '#f1f5f9', color: '#475569', fontSize: 14, fontWeight: 600
@@ -720,18 +743,67 @@ function createHistoryNewItem() {
   }
 }
 
-function ManualReceiptModal({ onClose, onSaved }) {
+function CopyPurchaseHistoryModal({ records, loading, onClose, onSelect }) {
+  const { settings } = useSettings()
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100 }}>
+      <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxWidth: 430, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>从过往购物履历复制</div>
+          <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+          选择后将复制商家、金额和商品明细；购买日期保留为今天，过期日期不复制。
+        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>加载履历中...</div>
+        ) : records.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>暂无过往购物履历</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {records.map(record => {
+              const itemCount = (record.purchase_items || []).length
+              return (
+                <button key={record.id} onClick={() => onSelect(record)} style={{ textAlign: 'left', padding: '12px', borderRadius: 10, border: '1.5px solid #86efac', background: '#f0fdf4', color: '#14532d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{record.store_name || '未知商家'}</div>
+                    {record.total_amount != null && (
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{formatAmount(record.total_amount, settings)}</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 5, fontSize: 12, color: '#166534' }}>
+                    <span>{record.purchased_at || record.created_at?.split('T')[0] || '无日期'}</span>
+                    <span>{itemCount} 件商品</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ManualReceiptModal({ onClose, onSaved, initialData }) {
   const { settings } = useSettings()
   const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
   const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
   const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
-  const [header, setHeader] = useState({
-    store_name: '',
-    store_name_original: '',
-    purchased_at: new Date().toISOString().split('T')[0],
-    total_amount: ''
-  })
-  const [items, setItems] = useState([createManualItem()])
+  const [header, setHeader] = useState(() => ({
+    store_name: initialData?.store_name || '',
+    store_name_original: initialData?.store_name_original || '',
+    purchased_at: initialData?.purchased_at || new Date().toISOString().split('T')[0],
+    total_amount: initialData?.total_amount != null && initialData?.total_amount !== ''
+      ? String(initialData.total_amount)
+      : ''
+  }))
+  const [items, setItems] = useState(() => (
+    initialData?.items?.length
+      ? initialData.items.map(item => ({ ...createManualItem(), ...item }))
+      : [createManualItem()]
+  ))
   const [recognizing, setRecognizing] = useState({})
   const photoTargetRef = useRef(null)
   const [saving, setSaving] = useState(false)
@@ -938,9 +1010,15 @@ function ManualReceiptModal({ onClose, onSaved }) {
         width: '100%', maxWidth: 430, maxHeight: '92vh', overflowY: 'auto'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>手动录入小票</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{initialData ? '复制过往小票' : '手动录入小票'}</div>
           <button onClick={onClose} style={{ background: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
+
+        {initialData?.sourceLabel && (
+          <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#166534' }}>
+            📋 已从「{initialData.sourceLabel}」复制，购买日期已保留为今天
+          </div>
+        )}
 
         <div style={{ background: '#f8fafc', borderRadius: 12, padding: 12, marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 10 }}>小票信息</div>
@@ -1117,6 +1195,8 @@ export default function PurchaseHistory() {
   const [showAddItems, setShowAddItems] = useState(false)
   const [newItems, setNewItems] = useState([])
   const [showManualAdd, setShowManualAdd] = useState(false)
+  const [showCopyHistory, setShowCopyHistory] = useState(false)
+  const [copySource, setCopySource] = useState(null)
   const [history, setHistory] = useState([])
   const [expanded, setExpanded] = useState({})
   const [loading, setLoading] = useState(true)
@@ -1667,6 +1747,39 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
 
   const [mainTab, setMainTab] = useState('purchase')
 
+  function copyPurchaseHistory(record) {
+    const sourceDate = record.purchased_at || record.created_at?.split('T')[0] || '无日期'
+    const sourceItems = (record.purchase_items || []).filter(item => item.name_zh?.trim())
+    setCopySource({
+      sourceLabel: `${record.store_name || '未知商家'}（${sourceDate}）`,
+      store_name: record.store_name || '',
+      store_name_original: record.store_name_original || '',
+      purchased_at: new Date().toISOString().split('T')[0],
+      total_amount: record.total_amount ?? '',
+      items: sourceItems.map(item => {
+        const isDaily = isDailyCategory(item.category)
+        return {
+          ...createManualItem(),
+          name_zh: item.name_zh || '',
+          name_original: item.name_original || '',
+          category: item.category || '',
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || '个',
+          price: item.price ?? '',
+          original_price: item.original_price ?? '',
+          is_discount: !!item.is_discount,
+          discount_info: item.discount_info || '',
+          memo: item.memo || '',
+          expiry_date: '',
+          add_to_fridge: item.category !== '非食材' && item.category !== '杂物',
+          stock_type: isDaily ? 'daily' : 'food'
+        }
+      })
+    })
+    setShowCopyHistory(false)
+    setShowManualAdd(true)
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{
@@ -1703,8 +1816,8 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
             </select>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-            <button onClick={() => setShowManualAdd(true)} style={{
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => { setCopySource(null); setShowManualAdd(true) }} style={{
               padding: '10px 0', borderRadius: 10, background: '#f0fdf4',
               color: '#16a34a', fontSize: 13, fontWeight: 600,
               border: '1.5px dashed #86efac',
@@ -1719,6 +1832,14 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3
             }}>
               <span style={{ fontSize: 20 }}>📷</span>扫描小票
+            </button>
+            <button onClick={() => setShowCopyHistory(true)} style={{
+              padding: '10px 0', borderRadius: 10, background: '#f0fdf4',
+              color: '#16a34a', fontSize: 13, fontWeight: 600,
+              border: '1.5px dashed #86efac',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3
+            }}>
+              <span style={{ fontSize: 20 }}>📋</span>复制过往
             </button>
           </div>
 
@@ -1767,9 +1888,18 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
               onSaved={fetchHistory}
             />
           )}
+          {showCopyHistory && (
+            <CopyPurchaseHistoryModal
+              records={history}
+              loading={loading}
+              onClose={() => setShowCopyHistory(false)}
+              onSelect={copyPurchaseHistory}
+            />
+          )}
           {showManualAdd && (
             <ManualReceiptModal
-              onClose={() => setShowManualAdd(false)}
+              initialData={copySource}
+              onClose={() => { setShowManualAdd(false); setCopySource(null) }}
               onSaved={fetchHistory}
             />
           )}
