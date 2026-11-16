@@ -318,6 +318,7 @@ function ReceiptScanModal({ onClose, onSaved }) {
   const [recognizing, setRecognizing] = useState({})
   const photoTargetRef = useRef(null)
   const { settings } = useSettings()
+const currencySymbol = getCurrencySymbol(currency, settings)
 const UNITS = settings.food_units?.length ? settings.food_units : DEFAULT_UNITS
 const FOOD_CATS = settings.food_categories?.length ? settings.food_categories : DEFAULT_FOOD_CATS
 const DAILY_CATS = settings.daily_categories?.length ? settings.daily_categories : DEFAULT_DAILY_CATS
@@ -667,12 +668,21 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
                         {isDailyCategory(item.category) && (
                           <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, whiteSpace: 'nowrap' }}>→非食用品</span>
                         )}
-                        {item.price && (
-                          <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
-                            {item.is_discount && <span style={{ color: '#ef4444' }}>折扣 </span>}
-                            {formatAmount(item.price, settings)}
-                          </span>
+                        {item.is_discount && (
+                          <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, whiteSpace: 'nowrap' }}>折扣</span>
                         )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>实付价格（{currencySymbol} {currency}）</div>
+                          <input style={smallField} type="number" value={item.price ?? ''}
+                            onChange={e => setItemField(i, 'price', e.target.value)} placeholder={currencySymbol} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>原价（{currencySymbol} {currency}）</div>
+                          <input style={smallField} type="number" value={item.original_price ?? ''}
+                            onChange={e => setItemField(i, 'original_price', e.target.value)} placeholder={currencySymbol} />
+                        </div>
                       </div>
                       {item.name_original && (
                         <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.name_original}</div>
