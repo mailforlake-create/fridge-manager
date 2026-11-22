@@ -5,6 +5,7 @@ import { useSettings } from '../context/SettingsContext'
 import ConfirmModal from './ConfirmModal'
 import { formatAmount } from '../lib/currency'
 import { formatDecimal } from '../lib/format'
+import { getPurchaseConsumptionState } from '../lib/stockSync'
 
 export default function DailyItemCard({ item, onDelete, onUpdate }) {
   const { settings } = useSettings()
@@ -36,8 +37,15 @@ const DAILY_LOCS = settings.daily_locations
     const qty = all ? remaining : Number(consumeQty)
     if (!qty || qty <= 0) return alert('请输入有效的使用数量')
     if (qty > remaining) return alert(`最多可使用 ${formatDecimal(remaining)}${item.unit}`)
-    const newConsumed = (item.consumed_quantity || 0) + qty
+    const newConsumed = parseFloat(((item.consumed_quantity || 0) + qty).toFixed(2))
     await supabase.from('daily_items').update({ consumed_quantity: newConsumed }).eq('id', item.id)
+    // 同步消耗状态到购物履历，否则小票履历不会显示「已用完」
+    if (item.purchase_item_id) {
+      const { error } = await supabase.from('purchase_items').update(
+        getPurchaseConsumptionState(item.quantity, newConsumed)
+      ).eq('id', item.purchase_item_id)
+      if (error) alert('同步小票履历状态失败：' + error.message)
+    }
     onUpdate({ ...item, consumed_quantity: newConsumed })
     setConsuming(false)
     setConsumeQty(itemConsumeStep)
@@ -46,22 +54,28 @@ const DAILY_LOCS = settings.daily_locations
 
 async function saveEdit() {
   setSaving(true)
+  const nextQty = Number(form.quantity) || 1
   const updates = {
     ...form,
-    quantity: Number(form.quantity) || 1,
+    quantity: nextQty,
   }
   await supabase.from('daily_items').update(updates).eq('id', item.id)
 
-  // 同步到购物履历
-  if (syncPurchase && item.purchase_item_id) {
-    await supabase.from('purchase_items').update({
-      name_zh: form.name_zh,
-      name_original: form.name_original || null,
-      category: form.category || null,
-      quantity: Number(form.quantity) || 1,
-      unit: form.unit,
-      memo: form.memo || null,
-    }).eq('id', item.purchase_item_id)
+  if (item.purchase_item_id) {
+    // 消耗状态始终同步（数量变化会影响是否已用完）；其余字段仅在勾选时同步
+    const purchaseUpdates = getPurchaseConsumptionState(nextQty, item.consumed_quantity)
+    if (syncPurchase) {
+      Object.assign(purchaseUpdates, {
+        name_zh: form.name_zh,
+        name_original: form.name_original || null,
+        category: form.category || null,
+        quantity: nextQty,
+        unit: form.unit,
+        memo: form.memo || null,
+      })
+    }
+    const { error } = await supabase.from('purchase_items').update(purchaseUpdates).eq('id', item.purchase_item_id)
+    if (error) alert('同步小票履历失败：' + error.message)
   }
 
   onUpdate({ ...item, ...updates })

@@ -1320,10 +1320,13 @@ const isDailyCategory = (category) => DAILY_CATS.includes(category)
       })
     }
 
-    // 入库成功后更新 purchase_item 的 add_to_fridge 状态并清除错误 memo
+    // 入库成功后更新 purchase_item 的 add_to_fridge 状态并清除错误 memo，
+    // 同时重置消耗状态，避免重新入库后仍显示「已用完」
     await supabase.from('purchase_items').update({
       add_to_fridge: true,
-      memo: null
+      memo: null,
+      consumed_quantity: 0,
+      is_fully_consumed: false
     }).eq('id', item.id)
 
     alert(`已重新入库到${isDaily ? '非食用品' : '食用品'}`)
